@@ -14,6 +14,10 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
+  readonly property color foreground: bar ? bar.foreground : Color.foreground
+  readonly property color dim: Qt.darker(foreground, 1.55)
+  readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+
   Service { id: service }
 
   IpcHandler {
@@ -25,9 +29,17 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "\uf6c0"
     active: service.on
     tooltipText: service.on ? "Ranchr · gate open" : "Ranchr · gate closed"
+    iconComponent: Component {
+      Item {
+        RanchrIcon {
+          anchors.centerIn: parent
+          iconSize: parent.width
+          color: service.on ? (root.bar ? root.bar.urgent : Color.urgent) : root.foreground
+        }
+      }
+    }
     onPressed: function (buttonCode) {
       if (buttonCode === Qt.RightButton)
         service.toggle()
@@ -69,9 +81,42 @@ Panel {
           spacing: Style.space(12)
 
           PanelHero {
+            id: hero
             width: parent.width
             title: "Ranchr"
             meta: service.busy ? "Working…" : (service.on ? "Gate open" : "Gate closed")
+            foreground: service.error !== "" ? (bar ? bar.urgent : Color.urgent) : root.foreground
+            fontFamily: root.fontFamily
+            iconOpacity: service.on ? 1.0 : 0.5
+            iconComponent: Component {
+              RanchrIcon {
+                iconSize: Style.font.display
+                color: root.foreground
+              }
+            }
+            trailingControl: Component {
+              ToggleSwitch {
+                id: hostSwitch
+                checked: service.on
+                busy: service.busy
+                foreground: hero.foreground
+                onToggled: service.toggle()
+              }
+            }
+          }
+
+          Text {
+            width: parent.width
+            wrapMode: Text.Wrap
+            color: service.error !== "" ? (bar ? bar.urgent : Color.urgent) : root.foreground
+            opacity: service.error !== "" ? 1.0 : 0.7
+            text: service.error !== ""
+              ? service.error
+              : (service.notified
+                  ? "Mailed: " + service.notified
+                  : (service.on ? "Scan the QR with your phone." : "Start the host to mint a magic link."))
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
           }
 
           Row {
@@ -83,18 +128,10 @@ Panel {
             }
             Button {
               text: "Resend mail"
-              enabled: service.on && !service.busy && service.notify !== "none"
+              visible: service.on && service.notify !== "none"
+              enabled: !service.busy
               onClicked: service.resend()
             }
-          }
-
-          Text {
-            width: parent.width
-            wrapMode: Text.Wrap
-            color: Color.foreground
-            opacity: 0.7
-            text: service.error !== "" ? service.error : (service.notified ? "Mailed: " + service.notified : (service.on ? "Scan the QR with your phone." : "Start the host to mint a magic link."))
-            font.pixelSize: Style.font.bodySmall
           }
 
           Image {
@@ -107,22 +144,35 @@ Panel {
           }
 
           Text {
+            visible: service.on && service.magic !== ""
             width: parent.width
-            text: "Notify"
-            color: Color.foreground
+            wrapMode: Text.WrapAnywhere
+            text: service.magic
+            color: root.dim
+            font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
           }
-          Row {
-            spacing: Style.space(6)
-            Repeater {
-              model: ["none", "hey", "smtp"]
-              Button {
-                required property string modelData
-                text: modelData
-                highlighted: service.notify === modelData
-                onClicked: service.setConfig("notify", modelData)
-              }
-            }
+
+          PanelSeparator { width: parent.width }
+
+          PanelSectionHeader {
+            width: parent.width
+            text: "Notify"
+          }
+
+          ButtonGroup {
+            width: parent.width
+            value: service.notify
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            fontSize: Style.font.caption
+            focusable: false
+            options: [
+              { value: "none", label: "None" },
+              { value: "hey", label: "HEY" },
+              { value: "smtp", label: "SMTP" }
+            ]
+            onChanged: function (v) { service.setConfig("notify", v) }
           }
 
           Column {
@@ -131,8 +181,8 @@ Panel {
             spacing: Style.space(6)
             Text {
               text: "HEY to"
-              color: Color.foreground
-              opacity: 0.7
+              color: root.dim
+              font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
             }
             TextField {
@@ -167,7 +217,7 @@ Panel {
             }
             TextField {
               width: parent.width
-              echoMode: TextInput.Password
+              password: true
               text: service.smtpPassword
               placeholderText: "SMTP password"
               onEditingFinished: service.setConfig("smtp_password", text)

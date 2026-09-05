@@ -7,11 +7,9 @@
   "license": "MIT",
   "description": "Open a magic-link tunnel to this ranch from the Omarchy bar. QR on the widget; optional HEY or SMTP mail.",
   "kinds": [
-    "service",
     "bar-widget"
   ],
   "entryPoints": {
-    "service": "Service.qml",
     "barWidget": "Panel.qml"
   },
   "barWidget": {
