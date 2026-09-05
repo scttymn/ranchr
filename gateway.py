@@ -63,6 +63,16 @@ def theme_slug() -> str:
         return ""
 
 
+def _hex_is_light(value: str) -> bool:
+    raw = (value or "").strip().lstrip("#")
+    if len(raw) not in (3, 6) or any(c not in "0123456789abcdefABCDEF" for c in raw):
+        return False
+    if len(raw) == 3:
+        raw = "".join(ch * 2 for ch in raw)
+    r, g, b = int(raw[0:2], 16), int(raw[2:4], 16), int(raw[4:6], 16)
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) > 160
+
+
 def theme_rev() -> str:
     slug, latest = _theme_stamp()
     if not slug and not latest:
@@ -103,7 +113,8 @@ def theme_message() -> dict:
     vars_ = _parse_theme_vars(css) if css else {}
     scheme = vars_.get("--omarchy-dark") or ""
     if scheme not in ("light", "dark"):
-        scheme = "dark" if css else ""
+        bg = vars_.get("--omarchy-background") or vars_.get("--bg") or ""
+        scheme = "light" if _hex_is_light(bg) else ("dark" if css else "")
     return {
         "type": "theme",
         "stamp": stamp,
