@@ -63,6 +63,21 @@ def theme_slug() -> str:
         return ""
 
 
+def theme_rev() -> str:
+    slug, latest = _theme_stamp()
+    if not slug and not latest:
+        return ""
+    return f"{slug}:{int(latest)}"
+
+
+def theme_message() -> dict:
+    stamp = theme_rev()
+    css = theme_css().decode("utf-8", "replace") if stamp else ""
+    if len(css) < 80:
+        css = ""
+    return {"stamp": stamp, "theme": theme_slug(), "css": css}
+
+
 def _theme_stamp() -> tuple:
     latest = 0.0
     for path in (THEME_NAME_PATH, THEME_DIR):
@@ -263,7 +278,8 @@ def snapshot_herd() -> dict:
         "host": host,
         "default_agent": default_agent,
         "theme": theme_slug(),
-        "theme_rev": f"{theme_slug()}:{int(_theme_stamp()[1])}",
+        "theme_rev": theme_rev(),
+        "theme_stamp": theme_rev(),
         "herdr": True,
         "blocked": blocked,
         "agents": agents,
@@ -590,32 +606,34 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
         self.end_headers()
-        last = None
-        last_theme_rev = None
+        last_herd = None
+        last_stamp = None
+        last_herd_at = 0.0
+        last_beat_at = 0.0
         try:
             while True:
-                try:
-                    herd = snapshot_herd()
-                    blob = json.dumps(herd)
-                except Exception as exc:
-                    herd = {"error": str(exc), "agents": []}
-                    blob = json.dumps(herd)
-                if blob != last:
-                    self.wfile.write(b"event: herd\n")
-                    self.wfile.write(b"data: " + blob.encode() + b"\n\n")
-                    last = blob
-                rev = (herd or {}).get("theme_rev") or (herd or {}).get("theme") or ""
-                if rev and rev != last_theme_rev:
-                    payload = json.dumps({
-                        "rev": rev,
-                        "theme": herd.get("theme") or "",
-                        "css": theme_css().decode("utf-8", "replace"),
-                    })
+                now = time.time()
+                stamp = theme_rev()
+                if stamp != last_stamp:
                     self.wfile.write(b"event: theme\n")
-                    self.wfile.write(b"data: " + payload.encode() + b"\n\n")
-                    last_theme_rev = rev
+                    self.wfile.write(b"data: " + json.dumps(theme_message()).encode() + b"\n\n")
+                    last_stamp = stamp
+                if now - last_herd_at >= 2:
+                    try:
+                        herd = snapshot_herd()
+                        blob = json.dumps(herd)
+                    except Exception as exc:
+                        blob = json.dumps({"error": str(exc), "agents": []})
+                    if blob != last_herd:
+                        self.wfile.write(b"event: herd\n")
+                        self.wfile.write(b"data: " + blob.encode() + b"\n\n")
+                        last_herd = blob
+                    last_herd_at = now
+                if now - last_beat_at >= 10:
+                    self.wfile.write(b": keepalive\n\n")
+                    last_beat_at = now
                 self.wfile.flush()
-                time.sleep(2)
+                time.sleep(0.4)
         except BrokenPipeError:
             return
 

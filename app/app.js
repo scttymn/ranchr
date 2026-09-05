@@ -125,16 +125,25 @@ const state = {
 };
 
 const THEME_STORE = "ranchr.theme.css";
+const THEME_STAMP = "ranchr.theme.stamp";
 
 function paintThemeCss(css) {
-  if (!css || css.length < 40) return false;
-  let tag = document.getElementById("ranch-theme");
-  if (!tag) {
-    tag = document.createElement("style");
-    tag.id = "ranch-theme";
-    document.head.appendChild(tag);
+  const old = document.getElementById("ranch-theme");
+  if (old) old.remove();
+  if (!css) {
+    document.documentElement.removeAttribute("data-ranch-theme");
+    try {
+      localStorage.removeItem(THEME_STORE);
+    } catch {
+      /* ignore */
+    }
+    return true;
   }
+  const tag = document.createElement("style");
+  tag.id = "ranch-theme";
   tag.textContent = css;
+  document.head.appendChild(tag);
+  document.documentElement.setAttribute("data-ranch-theme", state.themeRev || "live");
   try {
     localStorage.setItem(THEME_STORE, css);
   } catch {
@@ -150,16 +159,34 @@ function paintThemeCss(css) {
   return true;
 }
 
-function bootCachedTheme() {
+function applyThemeMessage(msg) {
+  if (!msg) return;
+  const stamp = msg.stamp || msg.rev || "";
+  const css = msg.css || "";
+  if (stamp && stamp === state.themeRev && state.themeApplied) return;
+  paintThemeCss(css);
+  state.themeRev = stamp;
+  state.themeSlug = msg.theme || "";
+  state.themeApplied = true;
   try {
-    const css = localStorage.getItem(THEME_STORE);
-    if (css) paintThemeCss(css);
+    if (stamp) localStorage.setItem(THEME_STAMP, stamp);
+    else localStorage.removeItem(THEME_STAMP);
   } catch {
     /* ignore */
   }
 }
 
-async function pullRanchTheme() {
+function bootCachedTheme() {
+  try {
+    const css = localStorage.getItem(THEME_STORE) || "";
+    const stamp = localStorage.getItem(THEME_STAMP) || "";
+    if (css) applyThemeMessage({ stamp, css });
+  } catch {
+    /* ignore */
+  }
+}
+
+async function pullRanchTheme(stamp, theme) {
   try {
     const headers = {};
     const token = ranchToken();
@@ -167,21 +194,22 @@ async function pullRanchTheme() {
     const res = await fetch(apiUrl("/api/theme.css"), { headers, cache: "no-store" });
     if (!res.ok) return false;
     const css = await res.text();
-    return paintThemeCss(css);
+    applyThemeMessage({ stamp: stamp || state.themeRev, css, theme: theme || state.themeSlug });
+    return true;
   } catch {
     return false;
   }
 }
 
 function applyHerdTheme(herd) {
-  const rev = (herd && (herd.theme_rev || herd.theme)) || "";
-  if (rev && rev === state.themeRev && state.themeApplied) return;
-  pullRanchTheme().then((ok) => {
-    if (!ok) return;
-    if (rev) state.themeRev = rev;
-    if (herd && herd.theme) state.themeSlug = herd.theme;
-    state.themeApplied = true;
-  });
+  if (!herd) return;
+  const stamp = herd.theme_stamp || herd.theme_rev || herd.theme || "";
+  if (herd.theme_css != null) {
+    applyThemeMessage({ stamp, css: herd.theme_css, theme: herd.theme });
+    return;
+  }
+  if (stamp && stamp === state.themeRev && state.themeApplied) return;
+  if (stamp) pullRanchTheme(stamp, herd.theme);
 }
 
 function toast(msg) {
@@ -866,7 +894,7 @@ function wire() {
   );
   $("#jump-latest").addEventListener("click", () => pinThread());
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") pullRanchTheme();
+    if (document.visibilityState === "visible") pullRanchTheme(state.themeRev, state.themeSlug);
   });
 }
 
@@ -881,36 +909,40 @@ function growComposer(box) {
 
 function live() {
   let src;
-  try {
-    src = new EventSource(apiUrl("/api/events"));
-  } catch {
-    return;
-  }
-  src.addEventListener("herd", (ev) => {
+  let timer;
+  const connect = () => {
     try {
-      const data = JSON.parse(ev.data);
-      if (data.error) return;
-      state.herd = data;
-      applyHerdTheme(data);
-      renderHerd();
-      if (state.screen === "session") refreshSession();
+      src = new EventSource(apiUrl("/api/events"));
     } catch {
-      /* ignore */
+      timer = setTimeout(connect, 2000);
+      return;
     }
-  });
-  src.addEventListener("theme", (ev) => {
-    try {
-      const data = JSON.parse(ev.data);
-      if (data.css && paintThemeCss(data.css)) {
-        state.themeRev = data.rev || state.themeRev;
-        state.themeSlug = data.theme || state.themeSlug;
-        state.themeApplied = true;
+    src.addEventListener("herd", (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        if (data.error) return;
+        state.herd = data;
+        applyHerdTheme(data);
+        renderHerd();
+        if (state.screen === "session") refreshSession();
+      } catch {
+        /* ignore */
       }
-    } catch {
-      /* ignore */
-    }
-  });
-  src.onerror = () => {};
+    });
+    src.addEventListener("theme", (ev) => {
+      try {
+        applyThemeMessage(JSON.parse(ev.data));
+      } catch {
+        /* ignore */
+      }
+    });
+    src.onerror = () => {
+      if (src.readyState !== EventSource.CLOSED) return;
+      src.close();
+      timer = setTimeout(connect, 1500);
+    };
+  };
+  connect();
 }
 
 wire();
