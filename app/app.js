@@ -141,8 +141,18 @@ function parseCssVars(css) {
 }
 
 function setChrome(scheme, bg) {
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", bg && bg.startsWith("#") ? bg : (scheme === "light" ? "#f4f4f5" : "#1a1b26"));
+  const color = bg && bg.startsWith("#") ? bg : (scheme === "light" ? "#f4f4f5" : "#1a1b26");
+  document.querySelectorAll('meta[name="theme-color"]').forEach((el) => el.remove());
+  const add = (content, media) => {
+    const m = document.createElement("meta");
+    m.setAttribute("name", "theme-color");
+    m.setAttribute("content", content);
+    if (media) m.setAttribute("media", media);
+    document.head.appendChild(m);
+  };
+  add(color);
+  add(color, "(prefers-color-scheme: light)");
+  add(color, "(prefers-color-scheme: dark)");
   let apple = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
   if (!apple) {
     apple = document.createElement("meta");
@@ -151,10 +161,10 @@ function setChrome(scheme, bg) {
   }
   apple.setAttribute("content", scheme === "light" ? "default" : "black-translucent");
   document.documentElement.style.colorScheme = scheme || "";
-  document.documentElement.style.backgroundColor = bg || "";
-  if (document.body) document.body.style.backgroundColor = bg || "";
+  document.documentElement.style.backgroundColor = color;
+  if (document.body) document.body.style.backgroundColor = color;
   const app = document.querySelector(".app");
-  if (app) app.style.backgroundColor = bg || "";
+  if (app) app.style.backgroundColor = color;
 }
 
 function applyThemeVars(vars, scheme) {
@@ -217,19 +227,36 @@ function bootCachedTheme() {
   }
 }
 
+function themeHeaders() {
+  const headers = {};
+  const token = ranchToken();
+  if (token && ranchHost()) headers.Authorization = "Bearer " + token;
+  return headers;
+}
+
 async function pullRanchTheme(stamp, theme) {
   try {
-    const headers = {};
-    const token = ranchToken();
-    if (token && ranchHost()) headers.Authorization = "Bearer " + token;
-    const res = await fetch(apiUrl("/api/theme.css"), { headers, cache: "no-store" });
+    const res = await fetch(apiUrl("/api/theme"), { headers: themeHeaders(), cache: "no-store" });
     if (!res.ok) return false;
-    const css = await res.text();
-    applyThemeMessage({ stamp: stamp || state.themeRev, css, theme: theme || state.themeSlug });
+    const msg = await res.json();
+    if (stamp) msg.stamp = msg.stamp || stamp;
+    if (theme) msg.theme = msg.theme || theme;
+    applyThemeMessage(msg);
     return true;
   } catch {
     return false;
   }
+}
+
+function watchTheme() {
+  const tick = () => {
+    if (document.visibilityState !== "visible") return;
+    if (!ranchHost() && onPages()) return;
+    pullRanchTheme();
+  };
+  setInterval(tick, 1000);
+  document.addEventListener("visibilitychange", tick);
+  tick();
 }
 
 function applyHerdTheme(herd) {
@@ -992,6 +1019,7 @@ loadHerd().then(() => {
   if (hash === "spawn") openSheet();
 });
 live();
+watchTheme();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=theme-poll-1").catch(() => {});
 }

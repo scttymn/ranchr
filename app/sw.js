@@ -28,6 +28,10 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
   if (url.pathname.includes("/api/")) return;
+  if (/\.(js|html)$/.test(url.pathname) || url.pathname.endsWith("/")) {
+    event.respondWith(fetch(event.request, { cache: "reload" }));
+    return;
+  }
   if (url.pathname === THEME_PATH || url.pathname.endsWith("/theme.css")) {
     event.respondWith(
       caches.open(THEME_CACHE).then(async (cache) => {

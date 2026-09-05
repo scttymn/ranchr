@@ -632,6 +632,9 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(css)
             return
+        if path == "/api/theme":
+            self._json(200, theme_message())
+            return
         if path == "/api/events":
             self._sse()
             return
@@ -650,8 +653,9 @@ class Handler(SimpleHTTPRequestHandler):
     def _sse(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
-        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Cache-Control", "no-cache, no-transform")
         self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")
         self.end_headers()
         last_herd = None
         last_stamp = None
@@ -662,12 +666,22 @@ class Handler(SimpleHTTPRequestHandler):
                 now = time.time()
                 stamp = theme_rev()
                 if stamp != last_stamp:
-                    payload = json.dumps(theme_message()).encode()
-                    # Unnamed message so iOS EventSource.onmessage fires;
-                    # named event for addEventListener("theme").
-                    self.wfile.write(b"data: " + payload + b"\n\n")
-                    self.wfile.write(b"event: theme\n")
-                    self.wfile.write(b"data: " + payload + b"\n\n")
+                    payload = json.dumps(theme_message())
+                    pad = ":" + (" " * max(0, 4096 - len(payload))) + "\n"
+                    packet = (
+                        "data: "
+                        + payload
+                        + "\n"
+                        + pad
+                        + "\n"
+                        + "event: theme\n"
+                        + "data: "
+                        + payload
+                        + "\n"
+                        + pad
+                        + "\n"
+                    )
+                    self.wfile.write(packet.encode())
                     last_stamp = stamp
                 if now - last_herd_at >= 2:
                     try:
