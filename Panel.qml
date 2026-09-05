@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
@@ -25,8 +25,9 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "R"
+    text: "\uf6c0"
     active: service.on
+    tooltipText: service.on ? "Ranchr · gate open" : "Ranchr · gate closed"
     onPressed: function (buttonCode) {
       if (buttonCode === Qt.RightButton)
         service.toggle()
@@ -93,7 +94,7 @@ Panel {
             color: Color.foreground
             opacity: 0.7
             text: service.error !== "" ? service.error : (service.notified ? "Mailed: " + service.notified : (service.on ? "Scan the QR with your phone." : "Start the host to mint a magic link."))
-            font.pixelSize: Style.font.small
+            font.pixelSize: Style.font.bodySmall
           }
 
           Image {
@@ -109,7 +110,7 @@ Panel {
             width: parent.width
             text: "Notify"
             color: Color.foreground
-            font.pixelSize: Style.font.small
+            font.pixelSize: Style.font.bodySmall
           }
           Row {
             spacing: Style.space(6)
@@ -132,10 +133,9 @@ Panel {
               text: "HEY to"
               color: Color.foreground
               opacity: 0.7
-              font.pixelSize: Style.font.small
+              font.pixelSize: Style.font.bodySmall
             }
             TextField {
-              id: heyTo
               width: parent.width
               text: service.heyTo
               placeholderText: "you@hey.com"
