@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -158,7 +159,9 @@ def _coalesce_grok_updates(path: Path) -> list[dict]:
             else:
                 current["text"] += text
         elif kind == "agent_message_chunk":
-            text = _chunk_text(update)
+            text = _strip_system_blocks(_chunk_text(update))
+            if not text:
+                continue
             if current is None or current.get("role") != "agent":
                 flush()
                 current = {"role": "agent", "text": text}
@@ -188,6 +191,18 @@ def _coalesce_grok_updates(path: Path) -> list[dict]:
         # skip thoughts, plans, etc.
     flush()
     return messages
+
+
+def _strip_system_blocks(text: str) -> str:
+    if not text:
+        return ""
+    cleaned = re.sub(
+        r"<system-reminder>[\s\S]*?</system-reminder>",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return cleaned.strip()
 
 
 def _chunk_text(update: dict) -> str:

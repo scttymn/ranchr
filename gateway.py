@@ -321,15 +321,11 @@ def snapshot_herd() -> dict:
     agent_file = Path.home() / ".config/omarchy/defaults/agent"
     if agent_file.is_file():
         default_agent = agent_file.read_text().strip()
-    palette = theme_message()
     return {
         "host": host,
         "default_agent": default_agent,
-        "theme": palette.get("theme") or "",
-        "theme_rev": palette.get("stamp") or "",
-        "theme_stamp": palette.get("stamp") or "",
-        "scheme": palette.get("scheme") or "",
-        "theme_vars": palette.get("vars") or {},
+        "theme": theme_slug(),
+        "theme_stamp": theme_rev(),
         "herdr": True,
         "blocked": blocked,
         "agents": agents,
@@ -668,11 +664,15 @@ class Handler(SimpleHTTPRequestHandler):
             while True:
                 now = time.time()
                 stamp = theme_rev()
-                due = (now - last_herd_at >= 2) or (stamp != last_stamp)
-                if due:
+                if stamp != last_stamp:
+                    payload = json.dumps(theme_message(), separators=(",", ":"))
+                    self.wfile.write(b"event: theme\n")
+                    self.wfile.write(b"data: " + payload.encode() + b"\n\n")
+                    last_stamp = stamp
+                if now - last_herd_at >= 2:
                     try:
                         herd = snapshot_herd()
-                        blob = json.dumps(herd)
+                        blob = json.dumps(herd, separators=(",", ":"))
                     except Exception as exc:
                         blob = json.dumps({"error": str(exc), "agents": []})
                     if blob != last_herd:
@@ -680,7 +680,6 @@ class Handler(SimpleHTTPRequestHandler):
                         self.wfile.write(b"data: " + blob.encode() + b"\n\n")
                         last_herd = blob
                     last_herd_at = now
-                    last_stamp = stamp
                 if now - last_beat_at >= 10:
                     self.wfile.write(b": keepalive\n\n")
                     last_beat_at = now

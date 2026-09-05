@@ -250,13 +250,18 @@ async function pullRanchTheme(stamp, theme) {
 
 function applyHerdTheme(herd) {
   if (!herd) return;
-  applyThemeMessage({
-    stamp: herd.theme_stamp || herd.theme_rev || herd.theme || "",
-    vars: herd.theme_vars || herd.vars || {},
-    css: herd.theme_css || "",
-    scheme: herd.scheme || "",
-    theme: herd.theme || "",
-  });
+  const stamp = herd.theme_stamp || herd.theme_rev || herd.theme || "";
+  if (herd.theme_vars || herd.vars) {
+    applyThemeMessage({
+      stamp,
+      vars: herd.theme_vars || herd.vars || {},
+      css: herd.theme_css || "",
+      scheme: herd.scheme || "",
+      theme: herd.theme || "",
+    });
+    return;
+  }
+  if (stamp && stamp !== state.themeRev) pullRanchTheme(stamp, herd.theme);
 }
 
 function toast(msg) {
@@ -866,7 +871,11 @@ function escapeHtml(s) {
 async function loadHerd() {
   try {
     state.herd = await api("/api/herd");
-    applyHerdTheme(state.herd);
+    try {
+      applyHerdTheme(state.herd);
+    } catch {
+      /* theme must not block chat */
+    }
     renderHerd();
   } catch (err) {
     const disconnected = err.code === "NO_RANCH";
@@ -969,9 +978,20 @@ function live() {
         const data = JSON.parse(ev.data);
         if (data.error) return;
         state.herd = data;
-        applyHerdTheme(data);
+        try {
+          applyHerdTheme(data);
+        } catch {
+          /* theme must not block chat */
+        }
         renderHerd();
         if (state.screen === "session") refreshSession();
+      } catch {
+        /* ignore */
+      }
+    });
+    src.addEventListener("theme", (ev) => {
+      try {
+        applyThemeMessage(JSON.parse(ev.data));
       } catch {
         /* ignore */
       }
@@ -994,5 +1014,5 @@ loadHerd().then(() => {
 });
 live();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=theme-herd-1").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=theme-herd-2").catch(() => {});
 }
