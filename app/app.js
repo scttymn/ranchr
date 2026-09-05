@@ -433,6 +433,7 @@ function writeSessionCache(id, data) {
       JSON.stringify({
         messages: (data.messages || []).slice(-200),
         agent: data.agent || null,
+        adapter: data.adapter || null,
         text: data.text || "",
         note: data.note || null,
         skip,
@@ -465,22 +466,39 @@ function mergeMessages(cached, incoming) {
   return incoming.length >= cached.length ? incoming : cached;
 }
 
+function harnessHasChat(kind) {
+  const k = (kind || "").toLowerCase();
+  return k === "grok" || k === "grok-build";
+}
+
+function preferredSessionMode(id, cached) {
+  if (cached && Object.prototype.hasOwnProperty.call(cached, "adapter")) {
+    return cached.adapter ? "chat" : "term";
+  }
+  const card = (state.herd.agents || []).find((a) => a.id === id);
+  return harnessHasChat(card && card.agent) ? "chat" : "term";
+}
+
 async function openSession(id) {
   stopPoll();
+  stopTty();
   state.sessionId = id;
   state.pendingUser = null;
   setThinking(false);
   state.chatStick = true;
   const cached = readSessionCache(id);
+  state.sessionMode = preferredSessionMode(id, cached);
   if (cached) {
     state.session = cached;
     go("session");
+    setSessionMode(state.sessionMode);
     applySessionHeader(cached);
     renderChat(cached);
     pinThread();
   } else {
     state.session = null;
     go("session");
+    setSessionMode(state.sessionMode);
   }
   await refreshSession();
   pinThread();
@@ -539,9 +557,9 @@ async function refreshSession() {
     } else if (state.thinking && blocked) {
       setThinking(false);
     }
-    $("#session-term").textContent = data.text || "";
     renderChat(data);
-    setSessionMode(state.sessionMode);
+    if (!data.adapter && state.sessionMode === "chat") setSessionMode("term");
+    else setSessionMode(state.sessionMode);
     updateComposerMode();
     if (state.thinking || a.status === "working") ensureWorkingPoll();
     else stopPoll();
@@ -1123,5 +1141,5 @@ loadHerd().then(() => {
 });
 live();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=term-scroll-1").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=adapter-term-1").catch(() => {});
 }
