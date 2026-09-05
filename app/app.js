@@ -538,6 +538,7 @@ async function refreshSession() {
   try {
     const tty = state.sessionMode === "term" ? "?tty=1" : "";
     const data = await api(`/api/agents/${encodeURIComponent(state.sessionId)}/session${tty}`);
+    const wasWorking = (state.session && state.session.agent && state.session.agent.status) === "working";
     if (state.session && Array.isArray(state.session.messages)) {
       data.messages = mergeMessages(state.session.messages, data.messages);
     }
@@ -563,6 +564,7 @@ async function refreshSession() {
     updateComposerMode();
     if (state.thinking || a.status === "working") ensureWorkingPoll();
     else stopPoll();
+    if (state.sessionMode === "term" && wasWorking && a.status !== "working") loadTermHistory();
   } catch (err) {
     if (!state.thinking) toast(err.message);
   }
@@ -726,6 +728,8 @@ function setSessionMode(mode) {
     b.classList.toggle("on", b.dataset.mode === mode)
   );
   $("#thread-wrap").classList.toggle("off", mode === "term");
+  const stack = $("#term-stack");
+  if (stack) stack.classList.toggle("on", mode === "term");
   $("#session-term").classList.toggle("on", mode === "term");
   updateJumpLatest();
   if (mode !== "term" && state.chatStick) pinThread();
@@ -776,9 +780,22 @@ function stopTty() {
   }
 }
 
+async function loadTermHistory() {
+  const el = $("#term-history");
+  if (!el || !state.sessionId) return;
+  try {
+    const data = await api(`/api/agents/${encodeURIComponent(state.sessionId)}/scrollback`);
+    el.textContent = data.text || "";
+    el.scrollTop = el.scrollHeight;
+  } catch {
+    /* leave whatever was there */
+  }
+}
+
 function startTty() {
   stopTty();
   if (state.screen !== "session" || state.sessionMode !== "term" || !state.sessionId) return;
+  loadTermHistory();
   const term = ensureTerm();
   if (!term) return;
   const ac = new AbortController();
@@ -1141,5 +1158,5 @@ loadHerd().then(() => {
 });
 live();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=adapter-term-1").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=term-hist-1").catch(() => {});
 }

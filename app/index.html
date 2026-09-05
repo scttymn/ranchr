@@ -9,11 +9,11 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Ranchr" />
   <title>Ranchr</title>
-  <script src="./connect.js?v=adapter-term-1"></script>
+  <script src="./connect.js?v=term-hist-1"></script>
   <link rel="icon" href="./icon.svg" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
-  <link rel="stylesheet" href="./app.css?v=adapter-term-1" />
-  <link rel="stylesheet" href="./theme.css?v=adapter-term-1" />
+  <link rel="stylesheet" href="./app.css?v=term-hist-1" />
+  <link rel="stylesheet" href="./theme.css?v=term-hist-1" />
   <link rel="stylesheet" href="./vendor/xterm/xterm.css" />
 </head>
 <body>
@@ -81,7 +81,11 @@
         <div class="thread" id="session-thread"></div>
         <button type="button" class="jump-latest" id="jump-latest" hidden>↓ Latest</button>
       </div>
-      <div class="term" id="session-term"></div>
+      <div class="term-stack" id="term-stack">
+        <pre class="term-history" id="term-history"></pre>
+        <div class="term-live-label">Live</div>
+        <div class="term" id="session-term"></div>
+      </div>
       <div class="sticky-need" id="session-need" hidden>
         <h3>Allow this?</h3>
         <p id="session-need-text"></p>
@@ -128,6 +132,6 @@
     <div class="toast" id="toast"></div>
   </div>
   <script src="./vendor/xterm/xterm.min.js"></script>
-  <script src="./app.js?v=adapter-term-1"></script>
+  <script src="./app.js?v=term-hist-1"></script>
 </body>
 </html>

@@ -507,10 +507,43 @@ button, .chip, .pick, .card, .fab {
   font-size: 12px;
   text-align: center;
 }
-.term {
+.term-stack {
   flex: 1;
   min-height: 0;
   margin: 0 16px 12px;
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+}
+.term-stack.on { display: flex; }
+.term-history {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px;
+  background: var(--bg-deep);
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  color: var(--fg);
+  font-family: ui-monospace, "IBM Plex Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.term-live-label {
+  flex: 0 0 auto;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-left: 4px;
+}
+.term {
+  flex: 0 0 34%;
+  min-height: 120px;
   background: var(--bg-deep);
   border: 1px solid var(--hairline);
   border-radius: 16px;
@@ -518,9 +551,7 @@ button, .chip, .pick, .card, .fab {
   overflow: auto;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x pan-y;
-  display: none;
 }
-.term.on { display: block; }
 .term .xterm,
 .term .xterm-screen,
 .term canvas {

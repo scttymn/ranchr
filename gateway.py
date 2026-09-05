@@ -462,6 +462,28 @@ class TtyBroker:
 TTY = TtyBroker()
 
 
+def read_scrollback(pane_id: str, lines: int = 200) -> str:
+    # One-shot. Polling this is what jumped the local TUI.
+    for source in ("recent-unwrapped", "recent"):
+        try:
+            result = herdr_ok(
+                "agent.read",
+                {
+                    "target": pane_id,
+                    "source": source,
+                    "lines": lines,
+                    "format": "text",
+                },
+                timeout=5.0,
+            )
+            text = ((result.get("read") or {}).get("text") or "").strip("\n")
+            if text.strip():
+                return text
+        except Exception:
+            continue
+    return ""
+
+
 def default_kind() -> str:
     raw = ""
     agent_file = Path.home() / ".config/omarchy/defaults/agent"
@@ -680,6 +702,13 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/herd":
             try:
                 self._json(200, snapshot_herd())
+            except Exception as exc:
+                self._err(502, str(exc))
+            return
+        if path.startswith("/api/agents/") and path.endswith("/scrollback"):
+            pane_id = unquote(path[len("/api/agents/") : -len("/scrollback")])
+            try:
+                self._json(200, {"text": read_scrollback(pane_id)})
             except Exception as exc:
                 self._err(502, str(exc))
             return
