@@ -308,6 +308,59 @@ def _strip_system_blocks(text: str) -> str:
     return cleaned.strip()
 
 
+def parse_tui_question(text: str) -> dict | None:
+    """Pull a numbered TUI poll (Claude AskUserQuestion, etc.) out of pane text."""
+    if not text:
+        return None
+    blob = text.replace("\r", "")
+    if "Enter to select" not in blob and "to navigate" not in blob:
+        return None
+    lines = [ln.rstrip() for ln in blob.splitlines()]
+    title = ""
+    for ln in lines:
+        if "☐" in ln or "☑" in ln:
+            title = re.sub(r"^[☐☑\s]+", "", ln).strip()
+            break
+    prompt = ""
+    options: list[dict] = []
+    cursor = 1
+    i = 0
+    while i < len(lines):
+        ln = lines[i]
+        marked = re.match(r"^\s*(❯)?\s*(\d+)\.\s+(.*)$", ln)
+        if marked:
+            n = int(marked.group(2))
+            if marked.group(1):
+                cursor = n
+            label = marked.group(3).strip()
+            desc = ""
+            j = i + 1
+            while j < len(lines):
+                nxt = lines[j]
+                if re.match(r"^\s*(❯)?\s*\d+\.\s+", nxt):
+                    break
+                if "──" in nxt or "Enter to select" in nxt:
+                    break
+                if nxt.strip():
+                    desc = (desc + " " + nxt.strip()).strip()
+                j += 1
+            options.append({"n": n, "label": label, "description": desc})
+            i = j
+            continue
+        if ln.strip().endswith("?") and not options:
+            prompt = ln.strip()
+        i += 1
+    if len(options) < 2:
+        return None
+    return {
+        "kind": "choice",
+        "title": title,
+        "prompt": prompt,
+        "cursor": cursor,
+        "options": options,
+    }
+
+
 def _chunk_text(update: dict) -> str:
     content = update.get("content")
     if isinstance(content, dict):

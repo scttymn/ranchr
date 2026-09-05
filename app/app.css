@@ -597,6 +597,52 @@ button, .chip, .pick, .card, .fab {
   color: var(--fg-soft);
   font-family: ui-monospace, monospace;
 }
+.sticky-need.question h3 {
+  font-size: 16px;
+  color: var(--fg-bright);
+  margin-bottom: 10px;
+}
+.q-kicker {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.q-kicker:empty { display: none; }
+.q-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.q-opt {
+  appearance: none;
+  -webkit-appearance: none;
+  text-align: left;
+  border: 1px solid var(--hairline);
+  background: var(--raised);
+  color: var(--fg);
+  border-radius: 14px;
+  min-height: var(--tap);
+  padding: 10px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+.q-opt.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--raised));
+}
+.q-opt .lab {
+  display: block;
+  font-weight: 650;
+  color: var(--fg-bright);
+}
+.q-opt .desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
 .row-btns { display: flex; gap: 8px; }
 .btn {
   flex: 1;

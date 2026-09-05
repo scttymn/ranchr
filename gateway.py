@@ -317,7 +317,7 @@ def pane_pids(pane_id: str) -> list[int]:
 
 def read_tty(pane_id: str, status: str) -> str:
     # Alternate-screen TUIs (Grok, etc.) reject deep "recent" reads while working.
-    source = "visible" if status == "working" else "recent"
+    source = "visible" if status in {"working", "blocked"} else "recent"
     lines = 40 if source == "visible" else 80
     try:
         result = herdr_ok(
@@ -353,14 +353,17 @@ def read_session(pane_id: str, include_tty: bool = False) -> dict:
     # agent.read of the live pane redraws alt-screen TUIs (scroll jump).
     # Chat comes from the adapter; only the Terminal tab needs a tty snapshot.
     text = ""
-    if include_tty:
+    question = None
+    if include_tty or agent.get("status") == "blocked":
         text = read_tty(pane_id, agent.get("status") or "")
+        question = adapters.parse_tui_question(text)
     return {
         "agent": agent,
         "text": text,
         "messages": conv.get("messages") or [],
         "adapter": conv.get("adapter"),
         "note": conv.get("note"),
+        "question": question,
     }
 
 
@@ -927,6 +930,22 @@ class Handler(SimpleHTTPRequestHandler):
                 else:
                     herdr_ok("agent.send_keys", {"target": pane_id, "keys": ["y", "enter"]})
                 self._json(200, {"ok": True, "action": action})
+                return
+            if path.startswith("/api/agents/") and path.endswith("/answer"):
+                pane_id = unquote(path[len("/api/agents/") : -len("/answer")])
+                index = int(body.get("index") or 0)
+                cursor = int(body.get("cursor") or 1)
+                if index < 1:
+                    self._err(400, "index required")
+                    return
+                delta = index - cursor
+                keys = (["down"] * delta if delta > 0 else ["up"] * (-delta)) + ["enter"]
+                try:
+                    herdr_ok("agent.focus", {"target": pane_id}, timeout=4.0)
+                except Exception:
+                    pass
+                herdr_ok("agent.send_keys", {"target": pane_id, "keys": keys}, timeout=4.0)
+                self._json(200, {"ok": True, "index": index})
                 return
             if path == "/api/spawn":
                 cwd = body.get("cwd") or str(Path.home() / "Work")

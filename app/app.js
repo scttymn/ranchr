@@ -531,10 +531,18 @@ async function refreshSession() {
     applySessionHeader(data);
     const a = data.agent;
     const blocked = a.status === "blocked";
+    const question = data.question && data.question.kind === "choice" ? data.question : null;
     const need = $("#session-need");
-    need.hidden = !blocked;
-    if (blocked) {
-      $("#session-need-text").textContent = a.preview || "This agent is waiting.";
+    const qel = $("#session-question");
+    if (question) {
+      need.hidden = true;
+      renderQuestion(question);
+    } else {
+      if (qel) qel.hidden = true;
+      need.hidden = !blocked;
+      if (blocked) {
+        $("#session-need-text").textContent = a.preview || "This agent is waiting.";
+      }
     }
     if (state.pendingUser && transcriptHasReply(visibleMessages(data.messages), state.pendingUser)) {
       state.pendingUser = null;
@@ -951,6 +959,42 @@ async function cancelTurn() {
   refreshSession();
 }
 
+function renderQuestion(q) {
+  const box = $("#session-question");
+  if (!box) return;
+  box.hidden = false;
+  $("#q-title").textContent = q.title || "";
+  $("#q-prompt").textContent = q.prompt || "Choose one";
+  const list = $("#q-options");
+  list.innerHTML = "";
+  const cursor = Number(q.cursor) || 1;
+  for (const opt of q.options || []) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "q-opt" + (opt.n === cursor ? " on" : "");
+    btn.innerHTML = `<span class="lab">${escapeHtml(String(opt.n) + ". " + (opt.label || ""))}</span>` +
+      (opt.description ? `<span class="desc">${escapeHtml(opt.description)}</span>` : "");
+    btn.addEventListener("click", () => answerQuestion(opt.n, cursor));
+    list.appendChild(btn);
+  }
+}
+
+async function answerQuestion(index, cursor) {
+  if (!state.sessionId) return;
+  try {
+    await api(`/api/agents/${encodeURIComponent(state.sessionId)}/answer`, {
+      method: "POST",
+      body: JSON.stringify({ index, cursor }),
+    });
+    const qel = $("#session-question");
+    if (qel) qel.hidden = true;
+    note("Answer sent");
+    await refreshSession();
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
 async function approve(id, action) {
   try {
     await api(`/api/agents/${encodeURIComponent(id)}/approve`, {
@@ -1140,5 +1184,5 @@ loadHerd().then(() => {
 });
 live();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=header-1").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=ask-1").catch(() => {});
 }
