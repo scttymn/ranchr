@@ -318,6 +318,14 @@ button, .chip, .pick, .card, .fab {
   color: var(--fg-bright);
 }
 
+.thread-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.thread-wrap.off { display: none; }
 .thread {
   flex: 1;
   min-height: 0;
@@ -511,7 +519,27 @@ button, .chip, .pick, .card, .fab {
   border-radius: 99px;
 }
 .term.on { display: block; }
-.thread.off { display: none; }
+
+.jump-latest {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  z-index: 3;
+  min-height: var(--tap);
+  padding: 8px 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--raised) 88%, transparent);
+  color: var(--fg-bright);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--bg-deep) 55%, transparent);
+}
+.jump-latest[hidden] { display: none; }
 
 .sticky-need {
   margin: 0 16px 8px;

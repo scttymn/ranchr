@@ -75,7 +75,10 @@
         <button class="on" data-mode="chat">Chat</button>
         <button data-mode="term">Terminal</button>
       </div>
-      <div class="thread" id="session-thread"></div>
+      <div class="thread-wrap" id="thread-wrap">
+        <div class="thread" id="session-thread"></div>
+        <button type="button" class="jump-latest" id="jump-latest" hidden>↓ Latest</button>
+      </div>
       <pre class="term" id="session-term"></pre>
       <div class="sticky-need" id="session-need" hidden>
         <h3>Allow this?</h3>

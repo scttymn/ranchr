@@ -60,6 +60,8 @@ const state = {
   skipById: {},
   noticesById: {},
   workOpen: {},
+  chatStick: true,
+  chatScrolling: false,
 };
 
 function toast(msg) {
@@ -96,6 +98,7 @@ function go(id) {
     card.classList.toggle("selected", id === "session" && card.dataset.id === state.sessionId);
   });
   closeSheet();
+  updateJumpLatest();
 }
 
 function applyFilter() {
@@ -245,8 +248,10 @@ async function openSession(id) {
   state.pendingUser = null;
   setThinking(false);
   state.session = null;
+  state.chatStick = true;
   go("session");
   await refreshSession();
+  pinThread();
 }
 
 function stopPoll() {
@@ -334,8 +339,44 @@ function groupChat(messages) {
   return groups;
 }
 
+const CHAT_BOTTOM_PX = 80;
+
+function threadEl() {
+  return $("#session-thread");
+}
+
+function threadAtBottom(el) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight < CHAT_BOTTOM_PX;
+}
+
+function updateJumpLatest() {
+  const btn = $("#jump-latest");
+  if (!btn) return;
+  const chat = state.screen === "session" && state.sessionMode !== "term";
+  btn.hidden = !(chat && !state.chatStick);
+}
+
+function pinThread() {
+  const el = threadEl();
+  if (!el) return;
+  state.chatStick = true;
+  const snap = () => {
+    state.chatScrolling = true;
+    el.scrollTop = el.scrollHeight;
+  };
+  snap();
+  requestAnimationFrame(() => {
+    snap();
+    requestAnimationFrame(() => {
+      snap();
+      state.chatScrolling = false;
+      updateJumpLatest();
+    });
+  });
+}
+
 function renderChat(data) {
-  const el = $("#session-thread");
+  const el = threadEl();
   const agentName = data?.agent?.agent || "agent";
   const working = isWorking();
   const messages = [...visibleMessages(data?.messages)];
@@ -350,6 +391,8 @@ function renderChat(data) {
   if (!groups.length && !notices.length && !state.thinking) {
     const note = data?.note || "No chat transcript yet.";
     el.innerHTML = `<p class="empty">${escapeHtml(note)}</p>`;
+    el._html = "";
+    updateJumpLatest();
     return;
   }
   const open = state.workOpen[state.sessionId] || {};
@@ -395,25 +438,32 @@ function renderChat(data) {
       <span class="dots"><span></span><span></span><span></span></span>
     </div>`;
   }
-  el.innerHTML = html;
-  el.querySelectorAll(".work-toggle[data-work]").forEach((btn) => {
-    btn.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      const key = btn.dataset.work;
-      const map = state.workOpen[state.sessionId] || {};
-      map[key] = !map[key];
-      state.workOpen[state.sessionId] = map;
-      const openNow = map[key];
-      const list = btn.nextElementSibling;
-      if (list && list.classList.contains("work-list")) list.hidden = !openNow;
-      btn.setAttribute("aria-expanded", openNow);
-      const chev = btn.querySelector(".chev");
-      if (chev) chev.textContent = openNow ? "▾" : "▸";
+  const stick = state.chatStick;
+  const prevTop = el.scrollTop;
+  if (el._html !== html) {
+    el._html = html;
+    el.innerHTML = html;
+    el.querySelectorAll(".work-toggle[data-work]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const key = btn.dataset.work;
+        const map = state.workOpen[state.sessionId] || {};
+        map[key] = !map[key];
+        state.workOpen[state.sessionId] = map;
+        const openNow = map[key];
+        const list = btn.nextElementSibling;
+        if (list && list.classList.contains("work-list")) list.hidden = !openNow;
+        btn.setAttribute("aria-expanded", openNow);
+        const chev = btn.querySelector(".chev");
+        if (chev) chev.textContent = openNow ? "▾" : "▸";
+        if (state.chatStick) pinThread();
+      });
     });
-  });
-  const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-  if (nearBottom) el.scrollTop = el.scrollHeight;
+  }
+  if (stick) pinThread();
+  else el.scrollTop = prevTop;
+  updateJumpLatest();
 }
 
 function setSessionMode(mode) {
@@ -421,8 +471,10 @@ function setSessionMode(mode) {
   $$("#session .seg button").forEach((b) =>
     b.classList.toggle("on", b.dataset.mode === mode)
   );
-  $("#session-thread").classList.toggle("off", mode === "term");
+  $("#thread-wrap").classList.toggle("off", mode === "term");
   $("#session-term").classList.toggle("on", mode === "term");
+  updateJumpLatest();
+  if (mode !== "term" && state.chatStick) pinThread();
 }
 
 const HERD_COMMANDS = new Set(["/clear", "/reset", "/new", "/cancel", "/stop"]);
@@ -468,6 +520,7 @@ async function sendPrompt() {
     } else {
       note(`Ran ${cmd}`);
     }
+    state.chatStick = true;
     renderChat(state.session || { messages: [] });
     try {
       await api(`/api/agents/${encodeURIComponent(state.sessionId)}/prompt`, {
@@ -482,6 +535,7 @@ async function sendPrompt() {
 
   const interject = isWorking();
   state.pendingUser = text;
+  state.chatStick = true;
   setThinking(true);
   renderChat(state.session || { messages: [], agent: { agent: "agent" } });
   try {
@@ -652,7 +706,13 @@ function wire() {
   $("#send").addEventListener("click", sendPrompt);
   $("#send-now").addEventListener("click", sendPrompt);
   $("#working-stop").addEventListener("click", cancelTurn);
-  $("#composer").addEventListener("input", () => growComposer($("#composer")));
+  $("#composer").addEventListener("input", () => {
+    growComposer($("#composer"));
+    if (state.chatStick && state.screen === "session") pinThread();
+  });
+  window.addEventListener("resize", () => {
+    if (state.chatStick && state.screen === "session") pinThread();
+  });
   $("#composer").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -673,6 +733,17 @@ function wire() {
     });
   });
   $("#spawn-go").addEventListener("click", spawn);
+  const thread = threadEl();
+  thread.addEventListener(
+    "scroll",
+    () => {
+      if (state.chatScrolling) return;
+      state.chatStick = threadAtBottom(thread);
+      updateJumpLatest();
+    },
+    { passive: true }
+  );
+  $("#jump-latest").addEventListener("click", () => pinThread());
 }
 
 function growComposer(box) {
