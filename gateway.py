@@ -28,6 +28,15 @@ SOCKET_PATH = os.environ.get(
 HOST = os.environ.get("HERD_HOST", "127.0.0.1")
 PORT = int(os.environ.get("HERD_PORT", "8787"))
 CALL_LOCK = threading.Lock()
+BUS_CV = threading.Condition()
+BUS_GEN = 0
+
+
+def bump_bus() -> None:
+    global BUS_GEN
+    with BUS_CV:
+        BUS_GEN += 1
+        BUS_CV.notify_all()
 HOST_STATE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "ranchr/host.json"
 THEME_NAME_PATH = Path.home() / ".local/state/omarchy/current/theme.name"
 THEME_DIR = Path.home() / ".local/state/omarchy/current/theme"
@@ -777,13 +786,16 @@ class Handler(SimpleHTTPRequestHandler):
         last_hash = want_herd
         last_herd = None
         last_herd_at = 0.0
+        gen = BUS_GEN
         while True:
             events = []
             pal = theme_payload()
             if pal.get("stamp") != want_theme:
                 events.append({"type": "theme", "payload": pal})
             now = time.time()
-            if last_herd is None or now - last_herd_at >= 0.8:
+            dirty = BUS_GEN != gen
+            gen = BUS_GEN
+            if last_herd is None or now - last_herd_at >= 0.8 or dirty:
                 last_herd = snapshot_herd()
                 blob = json.dumps(last_herd, sort_keys=True, separators=(",", ":"))
                 last_hash = hashlib.sha1(blob.encode()).hexdigest()[:16]
@@ -793,7 +805,8 @@ class Handler(SimpleHTTPRequestHandler):
             if events or now >= deadline:
                 self._json(200, {"events": events, "hash": last_hash})
                 return
-            time.sleep(0.25)
+            with BUS_CV:
+                BUS_CV.wait(timeout=min(0.4, max(0.05, deadline - time.time())))
 
     def _sse(self):
         try:
@@ -932,6 +945,56 @@ class Handler(SimpleHTTPRequestHandler):
         self._err(404, "not found")
 
 
+def _herdr_events():
+    subscriptions = [
+        {"type": "pane.created"},
+        {"type": "pane.closed"},
+        {"type": "pane.updated"},
+        {"type": "pane.agent_detected"},
+    ]
+    try:
+        agents, _snap = agents_from_snapshot()
+        for agent in agents:
+            if agent.get("id"):
+                subscriptions.append(
+                    {"type": "pane.agent_status_changed", "pane_id": agent["id"]}
+                )
+    except Exception:
+        pass
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(None)
+    sock.connect(SOCKET_PATH)
+    req = {
+        "id": uuid.uuid4().hex[:12],
+        "method": "events.subscribe",
+        "params": {"subscriptions": subscriptions},
+    }
+    sock.sendall((json.dumps(req) + "\n").encode())
+    buf = b""
+    while True:
+        chunk = sock.recv(65536)
+        if not chunk:
+            raise ConnectionError("herdr events closed")
+        buf += chunk
+        while b"\n" in buf:
+            line, buf = buf.split(b"\n", 1)
+            if not line.strip():
+                continue
+            bump_bus()
+
+
+def start_herdr_events() -> None:
+    def loop():
+        while True:
+            try:
+                _herdr_events()
+            except Exception as exc:
+                print(f"herdr events: {exc}", flush=True)
+                time.sleep(1.5)
+
+    threading.Thread(target=loop, name="herdr-events", daemon=True).start()
+
+
 def main():
     if not APP.is_dir():
         raise SystemExit(f"missing app dir: {APP}")
@@ -946,6 +1009,7 @@ def main():
     try:
         ping()
         print("herdr: connected", flush=True)
+        start_herdr_events()
     except Exception as exc:
         print(f"herdr: not connected ({exc})", flush=True)
     try:

@@ -16,11 +16,15 @@ def conversation(kind: str, cwd: str, pids: list[int]) -> dict:
         found = grok_conversation(cwd, pids)
         if found:
             return found
+    if kind in {"claude", "claude-code"}:
+        found = claude_conversation(cwd, pids)
+        if found:
+            return found
     return {
         "adapter": None,
         "title": None,
         "messages": [],
-        "note": f"No chat adapter for {kind or 'this harness'} yet. Terminal still has the raw TUI.",
+        "note": f"No chat adapter for {kind or 'this harness'} yet. You can still Send and Stop through Herdr.",
     }
 
 
@@ -47,6 +51,105 @@ def grok_conversation(cwd: str, pids: list[int]) -> dict | None:
         "note": None,
         "session_id": session_dir.name,
     }
+
+
+def claude_conversation(cwd: str, pids: list[int]) -> dict | None:
+    path = _claude_jsonl(cwd, pids)
+    if not path:
+        return None
+    messages = _coalesce_claude(path)
+    if not messages:
+        return None
+    return {
+        "adapter": "claude",
+        "title": None,
+        "messages": messages,
+        "note": None,
+        "session_id": path.stem,
+    }
+
+
+def _claude_project_dir(cwd: str) -> Path | None:
+    if not cwd:
+        return None
+    try:
+        resolved = str(Path(cwd).expanduser().resolve())
+    except Exception:
+        resolved = cwd
+    root = Path.home() / ".claude" / "projects" / resolved.replace("/", "-")
+    return root if root.is_dir() else None
+
+
+def _claude_jsonl(cwd: str, pids: list[int]) -> Path | None:
+    root = _claude_project_dir(cwd)
+    if not root:
+        return None
+    files = [p for p in root.glob("*.jsonl") if p.is_file()]
+    if not files:
+        return None
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    newest = files[0]
+    pidset = {int(p) for p in pids if p}
+    starts = [t for t in (_pid_start_epoch(p) for p in pidset) if t]
+    if starts:
+        if newest.stat().st_mtime < min(starts) - 30:
+            return None
+        return newest
+    if time.time() - newest.stat().st_mtime < 86400:
+        return newest
+    return None
+
+
+def _claude_text(content) -> str:
+    if isinstance(content, str):
+        return content.strip()
+    if not isinstance(content, list):
+        return ""
+    parts = []
+    for part in content:
+        if isinstance(part, dict) and part.get("type") == "text":
+            text = (part.get("text") or "").strip()
+            if text:
+                parts.append(text)
+    return "\n".join(parts).strip()
+
+
+def _coalesce_claude(path: Path) -> list[dict]:
+    messages: list[dict] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if obj.get("isSidechain"):
+            continue
+        kind = obj.get("type")
+        msg = obj.get("message") if isinstance(obj.get("message"), dict) else {}
+        if kind == "user":
+            text = _claude_text(msg.get("content"))
+            if text:
+                messages.append({"role": "user", "text": text})
+            continue
+        if kind == "assistant":
+            text = _claude_text(msg.get("content"))
+            tools = []
+            content = msg.get("content")
+            if isinstance(content, list):
+                for part in content:
+                    if not isinstance(part, dict):
+                        continue
+                    if part.get("type") == "tool_use":
+                        name = part.get("name") or "tool"
+                        inp = part.get("input") if isinstance(part.get("input"), dict) else {}
+                        detail = inp.get("file_path") or inp.get("command") or inp.get("query") or ""
+                        label = f"{name} · {detail}".strip(" ·") if detail else name
+                        tools.append({"role": "tool", "text": label})
+            if text:
+                messages.append({"role": "agent", "text": text})
+            messages.extend(tools)
+    return messages
 
 
 def _grok_home() -> Path:
