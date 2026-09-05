@@ -113,42 +113,43 @@ def kill_pid(pid: int | None) -> None:
         return
 
 
-def start_tunnel() -> str:
+def start_tunnel():
     if not shutil.which("cloudflared"):
         raise SystemExit("cloudflared is not installed")
-    proc = subprocess.Popen(
-        [
-            "cloudflared",
-            "tunnel",
-            "--url",
-            f"http://127.0.0.1:{PORT}",
-            "--no-autoupdate",
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        start_new_session=True,
-    )
-    url = None
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    log = STATE_DIR / "tunnel.log"
+    # Log to a file, not a pipe: when this CLI exits a pipe would SIGPIPE
+    # cloudflared and the trycloudflare URL would go dead.
+    with log.open("wb") as fh:
+        proc = subprocess.Popen(
+            [
+                "cloudflared",
+                "tunnel",
+                "--url",
+                f"http://127.0.0.1:{PORT}",
+                "--no-autoupdate",
+            ],
+            stdout=fh,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
     deadline = time.time() + 45
     buf = ""
-    while time.time() < deadline:
-        if proc.poll() is not None:
-            rest = proc.stdout.read() if proc.stdout else ""
-            raise SystemExit("cloudflared exited:\n" + (buf + (rest or ""))[-2000:])
-        line = proc.stdout.readline()
-        if not line:
-            time.sleep(0.05)
-            continue
-        buf += line
-        found = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", line)
-        if found:
-            url = found.group(0)
-            break
-    if not url:
-        kill_pid(proc.pid)
-        raise SystemExit("timed out waiting for trycloudflare URL")
-    return url, proc.pid
+    with log.open("rb") as reader:
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                rest = reader.read().decode("utf-8", "replace")
+                raise SystemExit("cloudflared exited:\n" + (buf + rest)[-2000:])
+            chunk = reader.read().decode("utf-8", "replace")
+            if not chunk:
+                time.sleep(0.1)
+                continue
+            buf += chunk
+            found = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", buf)
+            if found:
+                return found.group(0), proc.pid
+    kill_pid(proc.pid)
+    raise SystemExit("timed out waiting for trycloudflare URL")
 
 
 def write_qr(magic: str) -> None:
