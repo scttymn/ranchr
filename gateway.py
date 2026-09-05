@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -592,6 +593,9 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/theme":
             self._json(200, theme_payload())
             return
+        if path == "/api/sync":
+            self._sync()
+            return
         if path == "/api/events":
             self._sse()
             return
@@ -607,7 +611,37 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _sync(self):
+        q = parse_qs(urlparse(self.path).query)
+        want_theme = (q.get("theme") or [""])[0]
+        want_herd = (q.get("herd") or [""])[0]
+        deadline = time.time() + 15
+        last_hash = want_herd
+        last_herd = None
+        last_herd_at = 0.0
+        while True:
+            events = []
+            pal = theme_payload()
+            if pal.get("stamp") != want_theme:
+                events.append({"type": "theme", "payload": pal})
+            now = time.time()
+            if last_herd is None or now - last_herd_at >= 0.8:
+                last_herd = snapshot_herd()
+                blob = json.dumps(last_herd, sort_keys=True, separators=(",", ":"))
+                last_hash = hashlib.sha1(blob.encode()).hexdigest()[:16]
+                last_herd_at = now
+            if last_hash != want_herd:
+                events.append({"type": "herd", "payload": last_herd})
+            if events or now >= deadline:
+                self._json(200, {"events": events, "hash": last_hash})
+                return
+            time.sleep(0.25)
+
     def _sse(self):
+        try:
+            self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError:
+            pass
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache, no-transform")

@@ -908,25 +908,39 @@ function growComposer(box) {
 }
 
 function live() {
-  let src;
-  let timer;
-  const connect = () => {
-    try {
-      src = new EventSource(apiUrl("/api/events"));
-    } catch {
-      timer = setTimeout(connect, 2000);
-      return;
-    }
-    src.addEventListener("herd", (ev) => onBus(ev.data));
-    src.addEventListener("theme", (ev) => onBus(ev.data));
-    src.onmessage = (ev) => onBus(ev.data);
-    src.onerror = () => {
-      if (src.readyState !== EventSource.CLOSED) return;
-      src.close();
-      timer = setTimeout(connect, 1500);
-    };
+  let herdHash = "";
+  const headers = () => {
+    const h = { "Content-Type": "application/json" };
+    const token = ranchToken();
+    if (token && ranchHost()) h.Authorization = "Bearer " + token;
+    return h;
   };
-  connect();
+  const pump = async () => {
+    while (true) {
+      if (document.visibilityState !== "visible") {
+        await new Promise((resolve) => {
+          const once = () => {
+            document.removeEventListener("visibilitychange", once);
+            resolve();
+          };
+          document.addEventListener("visibilitychange", once);
+        });
+        continue;
+      }
+      try {
+        const u = new URL(apiUrl("/api/sync"));
+        u.searchParams.set("theme", state.themeRev || "");
+        u.searchParams.set("herd", herdHash);
+        const res = await fetch(u.toString(), { headers: headers(), cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        if (data.hash) herdHash = data.hash;
+        for (const ev of data.events || []) onBus(ev);
+      } catch {
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
+  };
+  pump();
 }
 
 wire();
@@ -938,5 +952,5 @@ loadHerd().then(() => {
 });
 live();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=bus-1").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=bus-2").catch(() => {});
 }
