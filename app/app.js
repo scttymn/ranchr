@@ -248,26 +248,15 @@ async function pullRanchTheme(stamp, theme) {
   }
 }
 
-function watchTheme() {
-  const tick = () => {
-    if (document.visibilityState !== "visible") return;
-    if (!ranchHost() && onPages()) return;
-    pullRanchTheme();
-  };
-  setInterval(tick, 1000);
-  document.addEventListener("visibilitychange", tick);
-  tick();
-}
-
 function applyHerdTheme(herd) {
   if (!herd) return;
-  const stamp = herd.theme_stamp || herd.theme_rev || herd.theme || "";
-  if (herd.theme_css != null) {
-    applyThemeMessage({ stamp, css: herd.theme_css, theme: herd.theme });
-    return;
-  }
-  if (stamp && stamp === state.themeRev && state.themeApplied) return;
-  if (stamp) pullRanchTheme(stamp, herd.theme);
+  applyThemeMessage({
+    stamp: herd.theme_stamp || herd.theme_rev || herd.theme || "",
+    vars: herd.theme_vars || herd.vars || {},
+    css: herd.theme_css || "",
+    scheme: herd.scheme || "",
+    theme: herd.theme || "",
+  });
 }
 
 function toast(msg) {
@@ -987,21 +976,6 @@ function live() {
         /* ignore */
       }
     });
-    src.addEventListener("theme", (ev) => {
-      try {
-        applyThemeMessage(JSON.parse(ev.data));
-      } catch {
-        /* ignore */
-      }
-    });
-    src.onmessage = (ev) => {
-      try {
-        const data = JSON.parse(ev.data);
-        if (data && data.type === "theme") applyThemeMessage(data);
-      } catch {
-        /* ignore */
-      }
-    };
     src.onerror = () => {
       if (src.readyState !== EventSource.CLOSED) return;
       src.close();
@@ -1019,7 +993,6 @@ loadHerd().then(() => {
   if (hash === "spawn") openSheet();
 });
 live();
-watchTheme();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=theme-poll-1").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=theme-herd-1").catch(() => {});
 }
