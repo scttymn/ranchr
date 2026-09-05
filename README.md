@@ -58,7 +58,7 @@ Optional:
 HERD_PORT=8787 HERD_HOST=127.0.0.1 ./run.sh
 ```
 
-`sync-theme.sh` copies the current Omarchy palette into `theme.css` when you have Omarchy. Safe to skip elsewhere.
+The PWA pulls live colors from the ranch (`/api/theme.css`). Change the Omarchy theme on this PC and the phone follows. `sync-theme.sh` only writes a static fallback `theme.css`.
 
 ## Layout
 

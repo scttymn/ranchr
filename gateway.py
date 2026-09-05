@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 import subprocess
 import threading
@@ -26,6 +27,109 @@ HOST = os.environ.get("HERD_HOST", "127.0.0.1")
 PORT = int(os.environ.get("HERD_PORT", "8787"))
 CALL_LOCK = threading.Lock()
 HOST_STATE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "ranchr/host.json"
+THEME_NAME_PATH = Path.home() / ".local/state/omarchy/current/theme.name"
+THEME_DIR = Path.home() / ".local/state/omarchy/current/theme"
+_THEME_LOCK = threading.Lock()
+_THEME_CACHE: dict = {"stamp": None, "css": b"", "slug": ""}
+
+THEME_CSS_MAP = """\
+  --bg: var(--omarchy-background);
+  --bg-deep: var(--omarchy-darker-background);
+  --raised: var(--omarchy-lighter-background);
+  --raised-2: color-mix(in srgb, var(--omarchy-lighter-background) 82%, var(--omarchy-foreground) 18%);
+  --fg: var(--omarchy-foreground);
+  --fg-bright: var(--omarchy-bright-foreground);
+  --fg-soft: var(--omarchy-light-foreground);
+  --muted: var(--omarchy-muted);
+  --frame: var(--omarchy-dark-foreground);
+  --accent: var(--omarchy-accent, var(--omarchy-red));
+  --accent-bright: var(--omarchy-bright-red);
+  --accent-soft: var(--omarchy-bright-magenta);
+  --green: var(--omarchy-green);
+  --green-bright: var(--omarchy-bright-green);
+  --green-glow: var(--omarchy-bright-green);
+  --cream: var(--omarchy-yellow);
+  --cream-bright: var(--omarchy-bright-yellow);
+  --cyan: var(--omarchy-cyan);
+  --hairline: color-mix(in srgb, var(--omarchy-foreground) 14%, transparent);
+  --glass: color-mix(in srgb, var(--omarchy-lighter-background) 78%, transparent);
+"""
+
+
+def theme_slug() -> str:
+    try:
+        return THEME_NAME_PATH.read_text().strip()
+    except Exception:
+        return ""
+
+
+def _theme_stamp() -> tuple:
+    latest = 0.0
+    for path in (THEME_NAME_PATH, THEME_DIR):
+        try:
+            latest = max(latest, path.stat().st_mtime)
+        except Exception:
+            pass
+    return (theme_slug(), latest)
+
+
+def _pretty_theme(slug: str) -> str:
+    return re.sub(r"(^|-)([a-z])", lambda m: (" " if m.group(1) else "") + m.group(2).upper(), slug or "Omarchy")
+
+
+def _build_theme_css() -> bytes:
+    slug = theme_slug() or "omarchy"
+    lines = [
+        f"/* ranch theme {slug} */",
+        ":root {",
+        f'  --theme-name: "{_pretty_theme(slug)}";',
+        f'  --theme-slug: "{slug}";',
+    ]
+    try:
+        proc = subprocess.run(
+            ["omarchy-theme-color", "--all"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        raw = proc.stdout or ""
+    except Exception:
+        raw = ""
+    for line in raw.splitlines():
+        if "\t" in line:
+            key, value = line.split("\t", 1)
+        elif "#" in line:
+            key, value = line.split("#", 1)
+            value = "#" + value
+        else:
+            continue
+        key, value = key.strip(), value.strip()
+        if not re.fullmatch(r"[a-zA-Z0-9_]+", key):
+            continue
+        if not (value.startswith("#") or value in {"dark", "light"} or value.startswith("rgb")):
+            continue
+        lines.append(f"  --omarchy-{key.replace('_', '-')}: {value};")
+    lines.append(THEME_CSS_MAP.rstrip())
+    lines.append("}")
+    lines.append("")
+    return ("\n".join(lines)).encode()
+
+
+def theme_css() -> bytes:
+    stamp = _theme_stamp()
+    with _THEME_LOCK:
+        if _THEME_CACHE["css"] and _THEME_CACHE["stamp"] == stamp:
+            return _THEME_CACHE["css"]
+        css = _build_theme_css()
+        if len(css) < 80:
+            fallback = APP / "theme.css"
+            if fallback.is_file():
+                css = fallback.read_bytes()
+        _THEME_CACHE["stamp"] = stamp
+        _THEME_CACHE["css"] = css
+        _THEME_CACHE["slug"] = stamp[0]
+        return css
 
 
 def public_token() -> str:
@@ -158,6 +262,7 @@ def snapshot_herd() -> dict:
     return {
         "host": host,
         "default_agent": default_agent,
+        "theme": theme_slug(),
         "herdr": True,
         "blocked": blocked,
         "agents": agents,
@@ -453,6 +558,15 @@ class Handler(SimpleHTTPRequestHandler):
                 self._err(404, "agent not found")
             except Exception as exc:
                 self._err(502, str(exc))
+            return
+        if path == "/api/theme.css":
+            css = theme_css()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/css; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(css)))
+            self.end_headers()
+            self.wfile.write(css)
             return
         if path == "/api/events":
             self._sse()

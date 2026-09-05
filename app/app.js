@@ -118,7 +118,41 @@ const state = {
   workOpen: {},
   chatStick: true,
   chatScrolling: false,
+  themeSlug: "",
 };
+
+async function pullRanchTheme() {
+  try {
+    const headers = {};
+    const token = ranchToken();
+    if (token && ranchHost()) headers.Authorization = "Bearer " + token;
+    const res = await fetch(apiUrl("/api/theme.css"), { headers });
+    if (!res.ok) return;
+    const css = await res.text();
+    if (!css || css.length < 40) return;
+    let tag = document.getElementById("ranch-theme");
+    if (!tag) {
+      tag = document.createElement("style");
+      tag.id = "ranch-theme";
+      document.head.appendChild(tag);
+    }
+    if (tag.textContent === css) return;
+    tag.textContent = css;
+    const bg = getComputedStyle(document.documentElement).getPropertyValue("--omarchy-background").trim()
+      || getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta && bg.startsWith("#")) meta.setAttribute("content", bg);
+  } catch {
+    /* ranch not connected */
+  }
+}
+
+function applyHerdTheme(herd) {
+  const slug = (herd && herd.theme) || "";
+  if (slug && slug === state.themeSlug) return;
+  if (slug) state.themeSlug = slug;
+  pullRanchTheme();
+}
 
 function toast(msg) {
   const el = $("#toast");
@@ -727,6 +761,7 @@ function escapeHtml(s) {
 async function loadHerd() {
   try {
     state.herd = await api("/api/herd");
+    applyHerdTheme(state.herd);
     renderHerd();
   } catch (err) {
     const disconnected = err.code === "NO_RANCH";
@@ -823,6 +858,7 @@ function live() {
       const data = JSON.parse(ev.data);
       if (data.error) return;
       state.herd = data;
+      applyHerdTheme(data);
       renderHerd();
       if (state.screen === "session") refreshSession();
     } catch {
