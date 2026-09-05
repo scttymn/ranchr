@@ -3,27 +3,83 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
 const STORE_HOST = "ranchr.host";
 const STORE_TOKEN = "ranchr.token";
+const COOKIE_HOST = "ranchr_host";
+const COOKIE_TOKEN = "ranchr_token";
+
+function cookiePath() {
+  return new URL("./", location.href).pathname;
+}
+
+function writeCookie(name, value) {
+  if (!value) return;
+  const secure = location.protocol === "https:" ? "; Secure" : "";
+  document.cookie =
+    `${name}=${encodeURIComponent(value)}; Max-Age=${60 * 60 * 24 * 180}; Path=${cookiePath()}; SameSite=Lax${secure}`;
+}
+
+function readCookie(name) {
+  for (const part of document.cookie.split(";")) {
+    const p = part.trim();
+    const eq = p.indexOf("=");
+    if (eq < 0) continue;
+    if (p.slice(0, eq) === name) {
+      try {
+        return decodeURIComponent(p.slice(eq + 1));
+      } catch {
+        return p.slice(eq + 1);
+      }
+    }
+  }
+  return "";
+}
+
+function storeGet(key) {
+  try {
+    return localStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function storeSet(key, value) {
+  if (!value) return;
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* private mode */
+  }
+}
+
+function persistRanch(host, token) {
+  if (host) {
+    storeSet(STORE_HOST, host);
+    writeCookie(COOKIE_HOST, host);
+  }
+  if (token) {
+    storeSet(STORE_TOKEN, token);
+    writeCookie(COOKIE_TOKEN, token);
+  }
+}
 
 function absorbConnect() {
   const q = new URLSearchParams(location.search);
   const host = (q.get("host") || "").trim().replace(/\/$/, "");
   const token = (q.get("t") || "").trim();
-  if (host) localStorage.setItem(STORE_HOST, host);
-  if (token) localStorage.setItem(STORE_TOKEN, token);
-  if (q.has("host") || q.has("t")) {
-    const next = new URL(location.href);
-    next.searchParams.delete("host");
-    next.searchParams.delete("t");
-    history.replaceState({}, "", next.pathname + next.search + next.hash);
-  }
+  // Keep host+t in the URL. iOS Add to Home Screen / Add to Dock uses the
+  // page URL (and the manifest start_url); stripping the query drops the ranch.
+  persistRanch(host, token);
 }
 
 function ranchHost() {
-  return (localStorage.getItem(STORE_HOST) || "").replace(/\/$/, "");
+  const q = (new URLSearchParams(location.search).get("host") || "").trim().replace(/\/$/, "");
+  if (q) return q;
+  return (storeGet(STORE_HOST) || readCookie(COOKIE_HOST)).replace(/\/$/, "");
 }
 
 function ranchToken() {
-  return localStorage.getItem(STORE_TOKEN) || "";
+  const q = (new URLSearchParams(location.search).get("t") || "").trim();
+  if (q) return q;
+  return storeGet(STORE_TOKEN) || readCookie(COOKIE_TOKEN);
 }
 
 function onPages() {
