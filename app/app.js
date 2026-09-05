@@ -1140,5 +1140,5 @@ loadHerd().then(() => {
 });
 live();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=chat-only-1").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=header-1").catch(() => {});
 }
