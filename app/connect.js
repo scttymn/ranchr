@@ -87,6 +87,18 @@
     theme_color: "#1a1b26",
     icons: [
       {
+        src: new URL("./icon-192.png", location.href).href,
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: new URL("./icon-512.png", location.href).href,
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
         src: new URL("./icon.svg", location.href).href,
         sizes: "any",
         type: "image/svg+xml",
