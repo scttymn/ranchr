@@ -2,7 +2,7 @@
 
 Phone/desktop client for coding agents that already run on your PC.
 
-[Herdr](https://herdr.dev) runs the ranch. Ranchr is the ranch hand — the control surface when you’re not at the desk. A small HTTP gateway talks to a live Herdr session over its Unix socket. The PWA shows the herd, chat, tools, and spawn/stop/close. Chat uses harness adapters (Grok today) so you see the conversation, not the TUI chrome. Terminal still has the raw pane.
+[Herdr](https://herdr.dev) is the herder — the ranch hand that tends the cattle on a machine. Ranchr is the rancher: you, looking over one or more ranches when you’re not in the yard. A small HTTP gateway talks to a live Herdr session over its Unix socket. The PWA shows the herd, chat, tools, and spawn/stop/close. Chat uses harness adapters (Grok today) so you see the conversation, not the TUI chrome. Terminal still has the raw pane.
 
 Remote (login-gated relay) is next. This repo is the local slice.
 
