@@ -584,6 +584,199 @@ function groupChat(messages) {
   return groups;
 }
 
+const MD_HOLD = [];
+const MD_MARK = "\uE000";
+
+function mdHold(html, block) {
+  MD_HOLD.push(html);
+  return `${MD_MARK}${block ? "B" : "I"}${MD_HOLD.length - 1}${MD_MARK}`;
+}
+
+function mdRestore(s) {
+  return s.replace(/\uE000[BI](\d+)\uE000/g, (_, i) => MD_HOLD[Number(i)] || "");
+}
+
+function safeHref(raw) {
+  let href = String(raw || "").trim();
+  if (/^www\./i.test(href)) href = "https://" + href;
+  try {
+    const u = new URL(href);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+    return u.href;
+  } catch {
+    return "";
+  }
+}
+
+function peelUrl(token) {
+  let url = token;
+  let after = "";
+  const trimEnd = () => {
+    while (url.length && /[.,;:!?*_~]+$/.test(url)) {
+      after = url.slice(-1) + after;
+      url = url.slice(0, -1);
+    }
+    const opens = (url.match(/\(/g) || []).length;
+    const closes = (url.match(/\)/g) || []).length;
+    if (closes > opens && url.endsWith(")")) {
+      after = ")" + after;
+      url = url.slice(0, -1);
+      return true;
+    }
+    return false;
+  };
+  while (trimEnd()) {}
+  return [url, after];
+}
+
+function mdAnchor(href, label) {
+  const url = safeHref(href);
+  if (!url) return label;
+  return mdHold(
+    `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" data-md-link="1">${escapeHtml(label)}</a>`
+  );
+}
+
+function takeMdLinks(s) {
+  let out = "";
+  let i = 0;
+  while (i < s.length) {
+    const open = s.indexOf("[", i);
+    if (open < 0) {
+      out += s.slice(i);
+      break;
+    }
+    const mid = s.indexOf("](", open);
+    if (mid < 0 || mid === open + 1) {
+      out += s.slice(i, open + 1);
+      i = open + 1;
+      continue;
+    }
+    const label = s.slice(open + 1, mid);
+    if (!label || label.includes("[") || label.includes("\n")) {
+      out += s.slice(i, open + 1);
+      i = open + 1;
+      continue;
+    }
+    let j = mid + 2;
+    let depth = 1;
+    while (j < s.length && depth > 0) {
+      const c = s[j];
+      if (c === "(") depth += 1;
+      else if (c === ")") depth -= 1;
+      else if (c === "\n") break;
+      j += 1;
+    }
+    if (depth !== 0) {
+      out += s.slice(i, open + 1);
+      i = open + 1;
+      continue;
+    }
+    const url = s.slice(mid + 2, j - 1).trim();
+    out += s.slice(i, open) + mdAnchor(url, label);
+    i = j;
+  }
+  return out;
+}
+
+function mdBlockStart(line) {
+  return (
+    /^\uE000B\d+\uE000$/.test(line) ||
+    /^[\t ]*[-*] /.test(line) ||
+    /^[\t ]*\d+\. /.test(line) ||
+    /^#{1,3} /.test(line) ||
+    /^&gt; /.test(line) ||
+    line === "&gt;"
+  );
+}
+
+function formatMdBlocks(s) {
+  const lines = s.split("\n");
+  const chunks = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\uE000B\d+\uE000$/.test(line)) {
+      chunks.push(line);
+      i += 1;
+      continue;
+    }
+    if (/^[\t ]*[-*] /.test(line)) {
+      const items = [];
+      while (i < lines.length && /^[\t ]*[-*] /.test(lines[i])) {
+        items.push(`<li>${lines[i].replace(/^[\t ]*[-*] /, "")}</li>`);
+        i += 1;
+      }
+      chunks.push(`<ul>${items.join("")}</ul>`);
+      continue;
+    }
+    if (/^[\t ]*\d+\. /.test(line)) {
+      const items = [];
+      while (i < lines.length && /^[\t ]*\d+\. /.test(lines[i])) {
+        items.push(`<li>${lines[i].replace(/^[\t ]*\d+\. /, "")}</li>`);
+        i += 1;
+      }
+      chunks.push(`<ol>${items.join("")}</ol>`);
+      continue;
+    }
+    if (/^#{1,3} /.test(line)) {
+      const n = line.match(/^(#{1,3}) /)[1].length;
+      chunks.push(`<h${n}>${line.replace(/^#{1,3} /, "")}</h${n}>`);
+      i += 1;
+      continue;
+    }
+    if (/^&gt; /.test(line) || line === "&gt;") {
+      const qs = [];
+      while (i < lines.length && (/^&gt; /.test(lines[i]) || lines[i] === "&gt;")) {
+        qs.push(lines[i].replace(/^&gt; ?/, ""));
+        i += 1;
+      }
+      chunks.push(`<blockquote>${qs.join("<br>")}</blockquote>`);
+      continue;
+    }
+    if (line === "") {
+      i += 1;
+      continue;
+    }
+    const para = [];
+    while (i < lines.length && lines[i] !== "" && !mdBlockStart(lines[i])) {
+      para.push(lines[i]);
+      i += 1;
+    }
+    chunks.push(`<p>${para.join("<br>")}</p>`);
+  }
+  return chunks.join("");
+}
+
+function formatChat(text) {
+  MD_HOLD.length = 0;
+  let s = String(text ?? "").replace(/\r\n/g, "\n");
+  s = s.replace(/```[^\n`]*\n?([\s\S]*?)```/g, (_, code) =>
+    mdHold(`<pre><code>${escapeHtml(code.replace(/\n$/, ""))}</code></pre>`, true)
+  );
+  s = s.replace(/`([^`\n]+)`/g, (_, code) => mdHold(`<code>${escapeHtml(code)}</code>`));
+  s = takeMdLinks(s);
+  s = s.replace(/\bhttps?:\/\/[^\s<]+/gi, (raw) => {
+    const [url, after] = peelUrl(raw);
+    if (!safeHref(url)) return raw;
+    return mdAnchor(url, url) + after;
+  });
+  s = s.replace(/(^|[\s(])www\.[^\s<]+/gi, (raw, lead) => {
+    const prefix = lead || "";
+    const rest = prefix ? raw.slice(prefix.length) : raw;
+    const [url, after] = peelUrl(rest);
+    if (!safeHref(url)) return raw;
+    return prefix + mdAnchor(url, url) + after;
+  });
+  s = escapeHtml(s);
+  s = s.replace(/\*\*\*([\s\S]+?)\*\*\*/g, "<strong><em>$1</em></strong>");
+  s = s.replace(/\*\*([\s\S]+?)\*\*/g, "<strong>$1</strong>");
+  s = s.replace(/__([\s\S]+?)__/g, "<strong>$1</strong>");
+  s = s.replace(/~~([\s\S]+?)~~/g, "<del>$1</del>");
+  s = s.replace(/(^|[^\*])\*(\S(?:[^*\n]*?\S)?)\*(?!\*)/g, "$1<em>$2</em>");
+  return mdRestore(formatMdBlocks(s));
+}
+
 const CHAT_BOTTOM_PX = 80;
 
 function threadEl() {
@@ -647,14 +840,14 @@ function renderChat(data) {
   html += groups
     .map((g, i) => {
       if (g.role === "user") {
-        return `<div class="msg you">${escapeHtml(g.text)}</div>`;
+        return `<div class="msg you"><div class="md">${formatChat(g.text)}</div></div>`;
       }
       const last = i === groups.length - 1;
       const busy = last && working;
       const tools = g.tools || [];
       const expanded = Boolean(open[i]);
       let body = `<div class="kicker">${escapeHtml(agentName)}</div>`;
-      if (g.text) body += `<div class="agent-text">${escapeHtml(g.text)}</div>`;
+      if (g.text) body += `<div class="agent-text md">${formatChat(g.text)}</div>`;
       if (busy && !g.text) {
         return "";
       }
@@ -1151,6 +1344,15 @@ function wire() {
   });
   $("#spawn-go").addEventListener("click", spawn);
   const thread = threadEl();
+  thread.addEventListener("click", (ev) => {
+    const a = ev.target.closest("a[data-md-link]");
+    if (!a) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const href = a.getAttribute("href") || "";
+    if (!/^https?:\/\//i.test(href)) return;
+    window.open(href, "_blank", "noopener,noreferrer");
+  });
   thread.addEventListener(
     "scroll",
     () => {
