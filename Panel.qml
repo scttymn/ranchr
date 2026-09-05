@@ -17,12 +17,35 @@ Panel {
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+  readonly property string setupCommand: "omarchy pkg add cloudflared qrencode"
+  property bool didPromptSetup: false
 
   Service { id: service }
 
   IpcHandler {
     target: root.ipcTarget
     function toggle(): string { root.toggle(); return "ok" }
+    function setupFinished(): void {
+      service.finishSetup()
+    }
+  }
+
+  Connections {
+    target: service
+    function onNeedsSetupChanged() {
+      if (service.needsSetup && !root.didPromptSetup) {
+        root.didPromptSetup = true
+        root.open()
+      }
+    }
+  }
+
+  function launchSetup() {
+    if (!bar || !service.tryStartSetup())
+      return
+    var inner = "trap 'omarchy-shell -q ranchr setupFinished' EXIT; " + root.setupCommand
+    bar.run("omarchy-launch-floating-terminal-with-presentation " + Util.shellQuote(inner))
+    root.close()
   }
 
   BarIconButton {
@@ -30,7 +53,9 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     active: service.on
-    tooltipText: service.on ? "Ranchr · gate open" : "Ranchr · gate closed"
+    tooltipText: service.needsSetup
+      ? "Ranchr · setup needed"
+      : (service.on ? "Ranchr · gate open" : "Ranchr · gate closed")
     iconComponent: Component {
       Item {
         RanchrIcon {
@@ -41,7 +66,9 @@ Panel {
       }
     }
     onPressed: function (buttonCode) {
-      if (buttonCode === Qt.RightButton)
+      if (service.needsSetup)
+        root.toggle()
+      else if (buttonCode === Qt.RightButton)
         service.toggle()
       else
         root.toggle()
@@ -84,7 +111,9 @@ Panel {
             id: hero
             width: parent.width
             title: "Ranchr"
-            meta: service.busy ? "Working…" : (service.on ? "Gate open" : "Gate closed")
+            meta: service.needsSetup
+              ? "Setup needed"
+              : (service.busy ? "Working…" : (service.on ? "Gate open" : "Gate closed"))
             foreground: service.error !== "" ? (bar ? bar.urgent : Color.urgent) : root.foreground
             fontFamily: root.fontFamily
             iconOpacity: service.on ? 1.0 : 0.5
@@ -97,6 +126,7 @@ Panel {
             trailingControl: Component {
               ToggleSwitch {
                 id: hostSwitch
+                visible: !service.needsSetup
                 checked: service.on
                 busy: service.busy
                 foreground: hero.foreground
@@ -105,7 +135,43 @@ Panel {
             }
           }
 
+          Column {
+            visible: service.needsSetup
+            width: parent.width
+            spacing: Style.space(10)
+
+            Text {
+              width: parent.width
+              wrapMode: Text.Wrap
+              color: root.foreground
+              text: !service.hasCloudflared && !service.hasQrencode
+                ? "Ranchr needs cloudflared to open a tunnel and qrencode to draw the QR."
+                : (!service.hasCloudflared
+                    ? "Install cloudflared to open a magic-link tunnel from this PC."
+                    : "Install qrencode so the widget can show a QR for your phone.")
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+            }
+
+            Button {
+              text: service.setupRunning ? "Installing…" : "Install missing tools…"
+              enabled: !service.setupRunning
+              bordered: true
+              onClicked: root.launchSetup()
+            }
+
+            Text {
+              width: parent.width
+              wrapMode: Text.Wrap
+              color: root.dim
+              text: "or run: " + root.setupCommand
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+          }
+
           Text {
+            visible: !service.needsSetup
             width: parent.width
             wrapMode: Text.Wrap
             color: service.error !== "" ? (bar ? bar.urgent : Color.urgent) : root.foreground
@@ -120,6 +186,7 @@ Panel {
           }
 
           Row {
+            visible: !service.needsSetup
             spacing: Style.space(8)
             Button {
               text: service.on ? "Stop host" : "Start host"
@@ -135,7 +202,7 @@ Panel {
           }
 
           Image {
-            visible: service.on && service.qr !== ""
+            visible: !service.needsSetup && service.on && service.qr !== ""
             width: Math.min(parent.width, 240)
             height: width
             fillMode: Image.PreserveAspectFit
@@ -144,7 +211,7 @@ Panel {
           }
 
           Text {
-            visible: service.on && service.magic !== ""
+            visible: !service.needsSetup && service.on && service.magic !== ""
             width: parent.width
             wrapMode: Text.WrapAnywhere
             text: service.magic
@@ -153,14 +220,19 @@ Panel {
             font.pixelSize: Style.font.bodySmall
           }
 
-          PanelSeparator { width: parent.width }
+          PanelSeparator {
+            visible: !service.needsSetup
+            width: parent.width
+          }
 
           PanelSectionHeader {
+            visible: !service.needsSetup
             width: parent.width
             text: "Notify"
           }
 
           ButtonGroup {
+            visible: !service.needsSetup
             width: parent.width
             value: service.notify
             foreground: root.foreground
@@ -176,7 +248,7 @@ Panel {
           }
 
           Column {
-            visible: service.notify === "hey"
+            visible: !service.needsSetup && service.notify === "hey"
             width: parent.width
             spacing: Style.space(6)
             Text {
@@ -194,7 +266,7 @@ Panel {
           }
 
           Column {
-            visible: service.notify === "smtp"
+            visible: !service.needsSetup && service.notify === "smtp"
             width: parent.width
             spacing: Style.space(6)
             TextField {

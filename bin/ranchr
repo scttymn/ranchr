@@ -34,6 +34,12 @@ DEFAULT_CONFIG = {
     "app_url": "https://scttymn.github.io/ranchr",
 }
 
+# binary name → Arch package. Both are extra/ on Omarchy.
+DEPS = (
+    ("cloudflared", "cloudflared"),
+    ("qrencode", "qrencode"),
+)
+
 
 def load_json(path: Path, default):
     try:
@@ -291,10 +297,33 @@ def cmd_config(args: list[str]) -> int:
     raise SystemExit("usage: ranchr config [set KEY VALUE]")
 
 
+def cmd_deps(args: list[str]) -> int:
+    present = {binary: bool(shutil.which(binary)) for binary, _pkg in DEPS}
+    missing = [binary for binary, ok in present.items() if not ok]
+    packages = [pkg for binary, pkg in DEPS if binary in missing]
+    if args and args[0] == "install":
+        if not packages:
+            print(json.dumps({"ok": True, "missing": []}))
+            return 0
+        if not shutil.which("omarchy"):
+            raise SystemExit("omarchy is not on PATH; install: pacman -S --needed " + " ".join(packages))
+        return subprocess.call(["omarchy", "pkg", "add", *packages])
+    body = {
+        **present,
+        "ready": not missing,
+        "missing": missing,
+        "packages": packages,
+    }
+    json.dump(body, sys.stdout)
+    sys.stdout.write("\n")
+    return 0
+
+
 def main() -> int:
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print("ranchr host on|off|status|notify")
         print("ranchr config [set KEY VALUE]")
+        print("ranchr deps [install]")
         return 0
     cmd = sys.argv[1]
     if cmd == "host":
@@ -310,6 +339,8 @@ def main() -> int:
         raise SystemExit("usage: ranchr host on|off|status|notify")
     if cmd == "config":
         return cmd_config(sys.argv[2:])
+    if cmd == "deps":
+        return cmd_deps(sys.argv[2:])
     if cmd in ("on", "off", "status", "notify"):
         sys.argv.insert(1, "host")
         return main()

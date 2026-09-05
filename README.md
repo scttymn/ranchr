@@ -11,6 +11,7 @@ The phone app is a PWA on GitHub Pages. Your PC still runs the gateway and agent
 - Python 3
 - [Herdr](https://herdr.dev) running (`herdr` / Omarchy `Super+Ctrl+Return`)
 - A coding agent Herdr can detect (Grok, Claude, Codex, OpenCode, …)
+- `cloudflared` and `qrencode` (the widget can install these)
 
 ## Run
 
@@ -46,6 +47,8 @@ Omarchy widget (toggle, QR, notify settings):
 ```bash
 omarchy plugin add https://github.com/scttymn/ranchr.git --enable
 ```
+
+The first time the widget loads, it checks for **cloudflared** and **qrencode**. If either is missing, the panel opens and offers **Install missing tools…**, which runs `omarchy pkg add cloudflared qrencode` in a floating terminal.
 
 Notify is **none** (QR only), **hey**, or **smtp**, set in the widget. The mail is the credential: tap `/?t=…` and a cookie is set. No Ranchr password.
 

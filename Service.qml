@@ -31,6 +31,13 @@ Item {
   property string smtpFrom: ""
   property string smtpTo: ""
   property bool busy: false
+  property bool probed: false
+  property bool hasCloudflared: false
+  property bool hasQrencode: false
+  property bool ready: false
+  property var missing: []
+  property bool setupRunning: false
+  readonly property bool needsSetup: probed && !ready
 
   FileView {
     id: hostFile
@@ -86,6 +93,50 @@ Item {
       configFile.reload()
     }
   }
+
+  Process {
+    id: depsProbe
+    running: false
+    stdout: StdioCollector {
+      id: depsOut
+      waitForEnd: true
+    }
+    onExited: root.applyDeps(depsOut.text)
+  }
+
+  function applyDeps(raw) {
+    root.probed = true
+    try {
+      var data = JSON.parse(raw || "{}")
+      root.hasCloudflared = !!data.cloudflared
+      root.hasQrencode = !!data.qrencode
+      root.missing = data.missing || []
+      root.ready = !!data.ready
+    } catch (e) {
+      root.ready = false
+    }
+  }
+
+  function probeDeps() {
+    if (depsProbe.running)
+      depsProbe.running = false
+    depsProbe.command = [root.bin, "deps"]
+    depsProbe.running = true
+  }
+
+  function tryStartSetup() {
+    if (root.setupRunning)
+      return false
+    root.setupRunning = true
+    return true
+  }
+
+  function finishSetup() {
+    root.setupRunning = false
+    probeDeps()
+  }
+
+  Component.onCompleted: probeDeps()
 
   function run(args) {
     root.busy = true
