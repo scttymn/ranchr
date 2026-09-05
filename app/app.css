@@ -617,9 +617,9 @@ button, .chip, .pick, .card, .fab {
   field-sizing: content;
 }
 .composer .send {
-  width: var(--tap);
   height: var(--tap);
-  min-width: var(--tap);
+  min-width: 72px;
+  padding: 0 16px;
   border: 0;
   border-radius: 16px;
   -webkit-appearance: none;
@@ -628,7 +628,9 @@ button, .chip, .pick, .card, .fab {
   background-color: var(--accent);
   color: var(--bg);
   cursor: pointer;
-  font-size: 18px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .sheet-scrim {

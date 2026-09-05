@@ -108,7 +108,7 @@ const state = {
   filter: "all",
   screen: "herd",
   sessionId: null,
-  sessionMode: "term",
+  sessionMode: "chat",
   kind: "codex",
   session: null,
   pendingUser: null,
@@ -1130,5 +1130,5 @@ loadHerd().then(() => {
 });
 live();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=tty-1").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=send-label-1").catch(() => {});
 }
