@@ -180,25 +180,16 @@ Panel {
               ? service.error
               : (service.notified
                   ? "Mailed: " + service.notified
-                  : (service.on ? "Scan the QR with your phone." : "Start the host to mint a magic link."))
+                  : (service.on ? "Scan the QR with your phone." : "Turn the switch on to mint a magic link."))
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
           }
 
-          Row {
-            visible: !service.needsSetup
-            spacing: Style.space(8)
-            Button {
-              text: service.on ? "Stop host" : "Start host"
-              enabled: !service.busy
-              onClicked: service.toggle()
-            }
-            Button {
-              text: "Resend mail"
-              visible: service.on && service.notify !== "none"
-              enabled: !service.busy
-              onClicked: service.resend()
-            }
+          Button {
+            text: "Resend mail"
+            visible: !service.needsSetup && service.on && service.notify !== "none"
+            enabled: !service.busy
+            onClicked: service.resend()
           }
 
           Image {
