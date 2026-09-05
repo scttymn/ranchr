@@ -466,19 +466,6 @@ function mergeMessages(cached, incoming) {
   return incoming.length >= cached.length ? incoming : cached;
 }
 
-function harnessHasChat(kind) {
-  const k = (kind || "").toLowerCase();
-  return k === "grok" || k === "grok-build";
-}
-
-function preferredSessionMode(id, cached) {
-  if (cached && Object.prototype.hasOwnProperty.call(cached, "adapter")) {
-    return cached.adapter ? "chat" : "term";
-  }
-  const card = (state.herd.agents || []).find((a) => a.id === id);
-  return harnessHasChat(card && card.agent) ? "chat" : "term";
-}
-
 async function openSession(id) {
   stopPoll();
   stopTty();
@@ -486,23 +473,20 @@ async function openSession(id) {
   state.pendingUser = null;
   setThinking(false);
   state.chatStick = true;
+  state.sessionMode = "chat";
   const cached = readSessionCache(id);
-  state.sessionMode = preferredSessionMode(id, cached);
   if (cached) {
     state.session = cached;
     go("session");
-    setSessionMode(state.sessionMode);
     applySessionHeader(cached);
     renderChat(cached);
     pinThread();
   } else {
     state.session = null;
     go("session");
-    setSessionMode(state.sessionMode);
   }
   await refreshSession();
   pinThread();
-  if (state.sessionMode === "term") startTty();
 }
 
 function stopPoll() {
@@ -559,8 +543,6 @@ async function refreshSession() {
       setThinking(false);
     }
     renderChat(data);
-    if (!data.adapter && state.sessionMode === "chat") setSessionMode("term");
-    else setSessionMode(state.sessionMode);
     updateComposerMode();
     if (state.thinking || a.status === "working") ensureWorkingPoll();
     else stopPoll();
@@ -1158,5 +1140,5 @@ loadHerd().then(() => {
 });
 live();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=term-hist-1").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=chat-only-1").catch(() => {});
 }
