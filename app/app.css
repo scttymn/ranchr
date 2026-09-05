@@ -491,7 +491,10 @@ button, .chip, .pick, .card, .fab {
   font: inherit;
   font-size: 14px;
   font-weight: 650;
-  background: var(--cream);
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--accent);
+  background-color: var(--accent);
   color: var(--bg);
   cursor: pointer;
 }
@@ -579,7 +582,13 @@ button, .chip, .pick, .card, .fab {
   font-weight: 650;
   cursor: pointer;
 }
-.btn.primary { background: var(--accent); color: var(--fg-bright); }
+.btn.primary {
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--accent);
+  background-color: var(--accent);
+  color: var(--bg);
+}
 .btn.quiet {
   background: transparent;
   color: var(--fg);
@@ -624,8 +633,11 @@ button, .chip, .pick, .card, .fab {
   min-width: var(--tap);
   border: 0;
   border-radius: 16px;
+  -webkit-appearance: none;
+  appearance: none;
   background: var(--accent);
-  color: var(--fg-bright);
+  background-color: var(--accent);
+  color: var(--bg);
   cursor: pointer;
   font-size: 18px;
 }

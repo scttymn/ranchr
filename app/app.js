@@ -170,6 +170,12 @@ function applyTheme(payload) {
   state.themeVarKeys = keys;
   const scheme = payload.scheme === "light" ? "light" : "dark";
   setChrome(scheme, colors.bg || "");
+  const accent = colors.accent;
+  const onAccent = colors.bg || colors["bg-deep"] || "#111111";
+  document.querySelectorAll(".composer .send, .btn.primary, .working-bar button").forEach((el) => {
+    if (accent) el.style.backgroundColor = accent;
+    if (onAccent) el.style.color = onAccent;
+  });
   root.setAttribute("data-scheme", scheme);
   state.themeRev = stamp;
   state.themeSlug = payload.name || "";
@@ -1020,5 +1026,5 @@ loadHerd().then(() => {
 });
 live();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=chat-cache-1").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=send-theme-1").catch(() => {});
 }
