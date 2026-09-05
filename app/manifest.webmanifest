@@ -1,6 +1,6 @@
 {
-  "name": "Herd",
-  "short_name": "Herd",
+  "name": "Ranchr",
+  "short_name": "Ranchr",
   "description": "Remote client for the agents on this PC",
   "start_url": "/",
   "scope": "/",
