@@ -58,7 +58,7 @@ Optional:
 HERD_PORT=8787 HERD_HOST=127.0.0.1 ./run.sh
 ```
 
-The PWA pulls live colors from the ranch (`/api/theme.css`). Change the Omarchy theme on this PC and the phone follows. `sync-theme.sh` only writes a static fallback `theme.css`.
+The PWA pulls live colors from the ranch (`/api/theme.css`). Change the Omarchy theme on this PC and the phone follows. Until it connects, the fallback palette is Omarchy’s default **Tokyo Night**.
 
 ## Layout
 

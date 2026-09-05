@@ -83,8 +83,8 @@
     start_url: start.href,
     scope: scope.href,
     display: "standalone",
-    background_color: "#0b0d11",
-    theme_color: "#0b0d11",
+    background_color: "#1a1b26",
+    theme_color: "#1a1b26",
     icons: [
       {
         src: new URL("./icon.svg", location.href).href,

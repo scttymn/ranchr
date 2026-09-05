@@ -4,8 +4,8 @@
   "description": "Remote client for the agents on this PC",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#0b0d11",
-  "theme_color": "#0b0d11",
+  "background_color": "#1a1b26",
+  "theme_color": "#1a1b26",
   "icons": [
     {
       "src": "./icon.svg",

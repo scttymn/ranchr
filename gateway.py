@@ -42,9 +42,9 @@ THEME_CSS_MAP = """\
   --fg-soft: var(--omarchy-light-foreground);
   --muted: var(--omarchy-muted);
   --frame: var(--omarchy-dark-foreground);
-  --accent: var(--omarchy-accent, var(--omarchy-red));
-  --accent-bright: var(--omarchy-bright-red);
-  --accent-soft: var(--omarchy-bright-magenta);
+  --accent: var(--omarchy-accent, var(--omarchy-blue));
+  --accent-bright: color-mix(in srgb, var(--accent) 70%, white);
+  --accent-soft: color-mix(in srgb, var(--accent) 42%, var(--omarchy-bright-foreground));
   --green: var(--omarchy-green);
   --green-bright: var(--omarchy-bright-green);
   --green-glow: var(--omarchy-bright-green);
