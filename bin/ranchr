@@ -77,9 +77,29 @@ def port_open() -> bool:
         sock.close()
 
 
+def _proc_start(pid: int) -> float:
+    try:
+        return os.stat(f"/proc/{pid}").st_ctime
+    except OSError:
+        return 0.0
+
+
 def ensure_gateway() -> None:
-    if port_open():
-        return
+    script = ROOT / "gateway.py"
+    st = host_state()
+    pid = st.get("gateway_pid")
+    if port_open() and pid:
+        try:
+            os.kill(int(pid), 0)
+            if script.stat().st_mtime <= _proc_start(int(pid)) + 1:
+                return
+        except (ProcessLookupError, FileNotFoundError, TypeError, ValueError, OSError):
+            pass
+        kill_pid(int(pid))
+        for _ in range(30):
+            if not port_open():
+                break
+            time.sleep(0.1)
     log = STATE_DIR / "gateway.log"
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     with log.open("ab") as fh:

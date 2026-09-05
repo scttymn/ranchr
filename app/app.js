@@ -101,6 +101,7 @@ function apiUrl(path) {
 }
 
 absorbConnect();
+bootCachedTheme();
 
 const state = {
   herd: { host: "this PC", agents: [], blocked: 0, default_agent: "codex" },
@@ -119,39 +120,68 @@ const state = {
   chatStick: true,
   chatScrolling: false,
   themeSlug: "",
+  themeRev: "",
+  themeApplied: false,
 };
+
+const THEME_STORE = "ranchr.theme.css";
+
+function paintThemeCss(css) {
+  if (!css || css.length < 40) return false;
+  let tag = document.getElementById("ranch-theme");
+  if (!tag) {
+    tag = document.createElement("style");
+    tag.id = "ranch-theme";
+    document.head.appendChild(tag);
+  }
+  tag.textContent = css;
+  try {
+    localStorage.setItem(THEME_STORE, css);
+  } catch {
+    /* private mode */
+  }
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: "ranch-theme", css });
+  }
+  const bg = getComputedStyle(document.documentElement).getPropertyValue("--omarchy-background").trim()
+    || getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta && bg.startsWith("#")) meta.setAttribute("content", bg);
+  return true;
+}
+
+function bootCachedTheme() {
+  try {
+    const css = localStorage.getItem(THEME_STORE);
+    if (css) paintThemeCss(css);
+  } catch {
+    /* ignore */
+  }
+}
 
 async function pullRanchTheme() {
   try {
     const headers = {};
     const token = ranchToken();
     if (token && ranchHost()) headers.Authorization = "Bearer " + token;
-    const res = await fetch(apiUrl("/api/theme.css"), { headers });
-    if (!res.ok) return;
+    const res = await fetch(apiUrl("/api/theme.css"), { headers, cache: "no-store" });
+    if (!res.ok) return false;
     const css = await res.text();
-    if (!css || css.length < 40) return;
-    let tag = document.getElementById("ranch-theme");
-    if (!tag) {
-      tag = document.createElement("style");
-      tag.id = "ranch-theme";
-      document.head.appendChild(tag);
-    }
-    if (tag.textContent === css) return;
-    tag.textContent = css;
-    const bg = getComputedStyle(document.documentElement).getPropertyValue("--omarchy-background").trim()
-      || getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta && bg.startsWith("#")) meta.setAttribute("content", bg);
+    return paintThemeCss(css);
   } catch {
-    /* ranch not connected */
+    return false;
   }
 }
 
 function applyHerdTheme(herd) {
-  const slug = (herd && herd.theme) || "";
-  if (slug && slug === state.themeSlug) return;
-  if (slug) state.themeSlug = slug;
-  pullRanchTheme();
+  const rev = (herd && (herd.theme_rev || herd.theme)) || "";
+  if (rev && rev === state.themeRev && state.themeApplied) return;
+  pullRanchTheme().then((ok) => {
+    if (!ok) return;
+    if (rev) state.themeRev = rev;
+    if (herd && herd.theme) state.themeSlug = herd.theme;
+    state.themeApplied = true;
+  });
 }
 
 function toast(msg) {
@@ -835,6 +865,9 @@ function wire() {
     { passive: true }
   );
   $("#jump-latest").addEventListener("click", () => pinThread());
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") pullRanchTheme();
+  });
 }
 
 function growComposer(box) {
@@ -861,6 +894,18 @@ function live() {
       applyHerdTheme(data);
       renderHerd();
       if (state.screen === "session") refreshSession();
+    } catch {
+      /* ignore */
+    }
+  });
+  src.addEventListener("theme", (ev) => {
+    try {
+      const data = JSON.parse(ev.data);
+      if (data.css && paintThemeCss(data.css)) {
+        state.themeRev = data.rev || state.themeRev;
+        state.themeSlug = data.theme || state.themeSlug;
+        state.themeApplied = true;
+      }
     } catch {
       /* ignore */
     }

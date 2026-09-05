@@ -263,6 +263,7 @@ def snapshot_herd() -> dict:
         "host": host,
         "default_agent": default_agent,
         "theme": theme_slug(),
+        "theme_rev": f"{theme_slug()}:{int(_theme_stamp()[1])}",
         "herdr": True,
         "blocked": blocked,
         "agents": agents,
@@ -590,18 +591,30 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Connection", "keep-alive")
         self.end_headers()
         last = None
+        last_theme_rev = None
         try:
             while True:
                 try:
                     herd = snapshot_herd()
                     blob = json.dumps(herd)
                 except Exception as exc:
-                    blob = json.dumps({"error": str(exc), "agents": []})
+                    herd = {"error": str(exc), "agents": []}
+                    blob = json.dumps(herd)
                 if blob != last:
                     self.wfile.write(b"event: herd\n")
                     self.wfile.write(b"data: " + blob.encode() + b"\n\n")
-                    self.wfile.flush()
                     last = blob
+                rev = (herd or {}).get("theme_rev") or (herd or {}).get("theme") or ""
+                if rev and rev != last_theme_rev:
+                    payload = json.dumps({
+                        "rev": rev,
+                        "theme": herd.get("theme") or "",
+                        "css": theme_css().decode("utf-8", "replace"),
+                    })
+                    self.wfile.write(b"event: theme\n")
+                    self.wfile.write(b"data: " + payload.encode() + b"\n\n")
+                    last_theme_rev = rev
+                self.wfile.flush()
                 time.sleep(2)
         except BrokenPipeError:
             return
