@@ -515,12 +515,17 @@ button, .chip, .pick, .card, .fab {
   border: 1px solid var(--hairline);
   border-radius: 16px;
   padding: 8px;
-  overflow: hidden;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
   display: none;
 }
-.term.on { display: flex; }
-.term .xterm { height: 100%; width: 100%; }
-.term .xterm-viewport { overflow-y: auto !important; }
+.term.on { display: block; }
+.term .xterm,
+.term .xterm-screen,
+.term canvas {
+  pointer-events: none;
+}
 
 .jump-latest {
   position: absolute;

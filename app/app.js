@@ -735,7 +735,10 @@ function ensureTerm() {
     fontSize: 13,
     fontFamily: 'ui-monospace, "IBM Plex Mono", Menlo, monospace',
     cursorBlink: true,
-    scrollback: 2000,
+    disableStdin: true,
+    scrollback: 4000,
+    cols: 80,
+    rows: 28,
     theme: {
       background: getComputedStyle(document.documentElement).getPropertyValue("--bg-deep").trim() || "#0e0e14",
       foreground: getComputedStyle(document.documentElement).getPropertyValue("--fg").trim() || "#a9b1d6",
@@ -743,16 +746,7 @@ function ensureTerm() {
     },
   });
   term.open(host);
-  const fit = () => {
-    const cw = 9;
-    const ch = 17;
-    const cols = Math.max(40, Math.floor((host.clientWidth - 8) / cw));
-    const rows = Math.max(10, Math.floor((host.clientHeight - 8) / ch));
-    if (term.cols !== cols || term.rows !== rows) term.resize(cols, rows);
-  };
-  fit();
-  state.termFit = fit;
-  window.addEventListener("resize", fit);
+  state.termFit = null;
   state.term = term;
   return term;
 }
@@ -769,7 +763,6 @@ function startTty() {
   if (state.screen !== "session" || state.sessionMode !== "term" || !state.sessionId) return;
   const term = ensureTerm();
   if (!term) return;
-  if (state.termFit) state.termFit();
   const ac = new AbortController();
   state.ttyAbort = ac;
   const pane = state.sessionId;
@@ -1130,5 +1123,5 @@ loadHerd().then(() => {
 });
 live();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=send-label-1").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=term-scroll-1").catch(() => {});
 }
