@@ -391,14 +391,81 @@ function updateComposerMode() {
   }
 }
 
+function sessionCacheKey(id) {
+  return "ranchr.session." + id;
+}
+
+function readSessionCache(id) {
+  if (!id) return null;
+  try {
+    const raw = localStorage.getItem(sessionCacheKey(id));
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (typeof data.skip === "number") state.skipById[id] = data.skip;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionCache(id, data) {
+  if (!id || !data) return;
+  try {
+    const skip = state.skipById[id] || 0;
+    localStorage.setItem(
+      sessionCacheKey(id),
+      JSON.stringify({
+        messages: (data.messages || []).slice(-200),
+        agent: data.agent || null,
+        text: data.text || "",
+        note: data.note || null,
+        skip,
+        savedAt: Date.now(),
+      })
+    );
+  } catch {
+    /* quota */
+  }
+}
+
+function applySessionHeader(data) {
+  const a = data?.agent;
+  if (!a) return;
+  $("#session-name").textContent = a.title || a.agent;
+  $("#session-meta").textContent = `${a.cwd_pretty || a.cwd || ""} · ${a.status || ""}`;
+  const pip = $("#session-pip");
+  pip.className = `pip ${a.status || "idle"}`;
+}
+
+function mergeMessages(cached, incoming) {
+  if (!incoming || !incoming.length) return cached || [];
+  if (!cached || !cached.length) return incoming;
+  const n = Math.min(cached.length, incoming.length);
+  for (let i = 0; i < n - 1; i++) {
+    if ((cached[i].role || "") !== (incoming[i].role || "") || (cached[i].text || "") !== (incoming[i].text || "")) {
+      return incoming;
+    }
+  }
+  return incoming.length >= cached.length ? incoming : cached;
+}
+
 async function openSession(id) {
   stopPoll();
   state.sessionId = id;
   state.pendingUser = null;
   setThinking(false);
-  state.session = null;
   state.chatStick = true;
-  go("session");
+  const cached = readSessionCache(id);
+  if (cached) {
+    state.session = cached;
+    go("session");
+    applySessionHeader(cached);
+    renderChat(cached);
+    pinThread();
+  } else {
+    state.session = null;
+    go("session");
+  }
   await refreshSession();
   pinThread();
 }
@@ -435,12 +502,13 @@ async function refreshSession() {
   if (!state.sessionId) return;
   try {
     const data = await api(`/api/agents/${encodeURIComponent(state.sessionId)}/session`);
+    if (state.session && Array.isArray(state.session.messages)) {
+      data.messages = mergeMessages(state.session.messages, data.messages);
+    }
     state.session = data;
+    writeSessionCache(state.sessionId, data);
+    applySessionHeader(data);
     const a = data.agent;
-    $("#session-name").textContent = a.title || a.agent;
-    $("#session-meta").textContent = `${a.cwd_pretty || a.cwd} · ${a.status}`;
-    const pip = $("#session-pip");
-    pip.className = `pip ${a.status}`;
     const blocked = a.status === "blocked";
     const need = $("#session-need");
     need.hidden = !blocked;
@@ -560,7 +628,7 @@ function renderChat(data) {
       let body = `<div class="kicker">${escapeHtml(agentName)}</div>`;
       if (g.text) body += `<div class="agent-text">${escapeHtml(g.text)}</div>`;
       if (busy && !g.text) {
-        body += `<span class="dots" aria-live="polite"><span></span><span></span><span></span></span>`;
+        return "";
       }
       if (tools.length) {
         const label = busy
@@ -581,7 +649,7 @@ function renderChat(data) {
     })
     .join("");
   const last = groups[groups.length - 1];
-  if (state.thinking && (!last || last.role !== "agent")) {
+  if (state.thinking && !working && (!last || last.role !== "agent")) {
     html += `<div class="msg agent thinking" aria-live="polite">
       <div class="kicker">${escapeHtml(agentName)}</div>
       <span class="dots"><span></span><span></span><span></span></span>
@@ -952,5 +1020,5 @@ loadHerd().then(() => {
 });
 live();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=bus-2").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=chat-cache-1").catch(() => {});
 }
