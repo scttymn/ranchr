@@ -100,6 +100,30 @@ def _claude_jsonl(cwd: str, pids: list[int]) -> Path | None:
     return None
 
 
+def _claude_tool_label(part: dict) -> str:
+    name = part.get("name") or "tool"
+    inp = part.get("input") if isinstance(part.get("input"), dict) else {}
+    skill = inp.get("skill")
+    if name == "Skill" and skill:
+        return f"Skill · {skill}"
+    if name == "Bash":
+        cmd = (inp.get("command") or "").replace("\n", " ").strip()
+        return f"Bash · {cmd[:72]}" if cmd else "Bash"
+    detail = (
+        inp.get("file_path")
+        or inp.get("target_file")
+        or inp.get("query")
+        or inp.get("pattern")
+        or inp.get("url")
+        or ""
+    )
+    if isinstance(detail, str) and len(detail) > 72:
+        detail = detail[:69] + "…"
+    if detail:
+        return f"{name} · {detail}"
+    return name
+
+
 def _claude_text(content) -> str:
     if isinstance(content, str):
         return content.strip()
@@ -128,6 +152,9 @@ def _coalesce_claude(path: Path) -> list[dict]:
         kind = obj.get("type")
         msg = obj.get("message") if isinstance(obj.get("message"), dict) else {}
         if kind == "user":
+            human = (obj.get("origin") or {}).get("kind") == "human" or obj.get("promptSource") == "typed"
+            if not human:
+                continue
             text = _claude_text(msg.get("content"))
             if text:
                 messages.append({"role": "user", "text": text})
@@ -141,11 +168,7 @@ def _coalesce_claude(path: Path) -> list[dict]:
                     if not isinstance(part, dict):
                         continue
                     if part.get("type") == "tool_use":
-                        name = part.get("name") or "tool"
-                        inp = part.get("input") if isinstance(part.get("input"), dict) else {}
-                        detail = inp.get("file_path") or inp.get("command") or inp.get("query") or ""
-                        label = f"{name} · {detail}".strip(" ·") if detail else name
-                        tools.append({"role": "tool", "text": label})
+                        tools.append({"role": "tool", "text": _claude_tool_label(part)})
             if text:
                 messages.append({"role": "agent", "text": text})
             messages.extend(tools)
