@@ -2,14 +2,15 @@
   "name": "Ranchr",
   "short_name": "Ranchr",
   "description": "Remote client for the agents on this PC",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
+  "id": "./",
   "display": "standalone",
   "background_color": "#0b0d11",
   "theme_color": "#0b0d11",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "./icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"

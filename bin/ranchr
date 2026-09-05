@@ -15,6 +15,7 @@ import sys
 import time
 from email.message import EmailMessage
 from pathlib import Path
+from urllib.parse import urlencode
 ROOT = Path(__file__).resolve().parent.parent
 PORT = int(os.environ.get("HERD_PORT", "8787"))
 STATE_DIR = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "ranchr"
@@ -30,6 +31,7 @@ DEFAULT_CONFIG = {
     "smtp_password": "",
     "smtp_from": "",
     "smtp_to": "",
+    "app_url": "https://scttymn.github.io/ranchr",
 }
 
 
@@ -205,13 +207,22 @@ def cmd_status() -> int:
     return 0
 
 
+def app_url() -> str:
+    return (config().get("app_url") or DEFAULT_CONFIG["app_url"]).rstrip("/")
+
+
+def magic_link(tunnel: str, token: str) -> str:
+    query = urlencode({"host": tunnel.rstrip("/"), "t": token})
+    return f"{app_url()}/?{query}"
+
+
 def cmd_on() -> int:
     st = host_state()
     kill_pid(st.get("tunnel_pid"))
     ensure_gateway()
     url, tunnel_pid = start_tunnel()
     token = secrets.token_urlsafe(24)
-    magic = f"{url}/?t={token}"
+    magic = magic_link(url, token)
     write_qr(magic)
     st = {
         "on": True,

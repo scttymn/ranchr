@@ -347,6 +347,20 @@ class Handler(SimpleHTTPRequestHandler):
         sys_stderr = __import__("sys").stderr
         sys_stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
 
+    def end_headers(self):
+        origin = (self.headers.get("Origin") or "").strip()
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Max-Age", "86400")
+            self.send_header("Vary", "Origin")
+        super().end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.end_headers()
+
     def _json(self, code: int, body: dict | list):
         data = json.dumps(body).encode()
         self.send_response(code)
@@ -377,15 +391,26 @@ class Handler(SimpleHTTPRequestHandler):
     def _query_token(self) -> str:
         return (parse_qs(urlparse(self.path).query).get("t") or [""])[0]
 
+    def _bearer_token(self) -> str:
+        raw = self.headers.get("Authorization") or ""
+        kind, _, value = raw.partition(" ")
+        if kind.lower() == "bearer":
+            return value.strip()
+        return ""
+
     def _authorized(self) -> bool:
         if self._local_host():
             return True
         tok = public_token()
         if not tok:
             return False
-        return self._query_token() == tok or self._cookie_token() == tok
+        return tok in {self._query_token(), self._cookie_token(), self._bearer_token()}
 
     def _deny(self):
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/"):
+            self._err(401, "gated")
+            return
         body = b"<!doctype html><meta charset=utf-8><title>Ranchr</title><p>This ranch is gated. Open the magic link from the widget or your mail.</p>"
         self.send_response(401)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -398,7 +423,7 @@ class Handler(SimpleHTTPRequestHandler):
         path = parsed.path
         tok = public_token()
         qtok = self._query_token()
-        if tok and qtok == tok:
+        if tok and qtok == tok and not path.startswith("/api/"):
             self.send_response(302)
             self.send_header("Set-Cookie", f"ranchr={tok}; Path=/; HttpOnly; SameSite=Lax")
             self.send_header("Location", "/")

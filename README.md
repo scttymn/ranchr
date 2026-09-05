@@ -4,7 +4,7 @@ Phone/desktop client for coding agents that already run on your PC.
 
 [Herdr](https://herdr.dev) is the herder — the ranch hand that tends the cattle on a machine. Ranchr is the rancher: you, looking over one or more ranches when you’re not in the yard. A small HTTP gateway talks to a live Herdr session over its Unix socket. The PWA shows the herd, chat, tools, and spawn/stop/close. Chat uses harness adapters (Grok today) so you see the conversation, not the TUI chrome. Terminal still has the raw pane.
 
-Remote (login-gated relay) is next. This repo is the local slice.
+The phone app is a PWA on GitHub Pages. Your PC still runs the gateway and agents. A magic link ties the two together.
 
 ## Requirements
 
@@ -20,7 +20,9 @@ Local only:
 ./run.sh
 ```
 
-Open http://127.0.0.1:8787/
+Open http://127.0.0.1:8787/ on this machine.
+
+The installable app lives at **https://scttymn.github.io/ranchr/**. On a phone, open that URL once and add it to the home screen. It talks to this PC only after you start the host.
 
 Host tunnel (magic link + QR):
 
@@ -29,6 +31,14 @@ Host tunnel (magic link + QR):
 ./bin/ranchr host status
 ./bin/ranchr host notify # mail via HEY or SMTP if configured
 ./bin/ranchr host off
+```
+
+The magic link is `https://scttymn.github.io/ranchr/?host=<tunnel>&t=<token>`. The token is the credential. Scan the QR or tap the mail; the PWA stores the ranch and does not need a password.
+
+Override the app URL if you fork:
+
+```bash
+./bin/ranchr config set app_url https://you.github.io/ranchr
 ```
 
 Omarchy widget (toggle, QR, notify settings):
@@ -58,4 +68,4 @@ HERD_PORT=8787 HERD_HOST=127.0.0.1 ./run.sh
 
 ## Status
 
-Works on the same machine as Herdr. Phone-on-LAN and a hosted relay are not in this tree yet.
+Local PWA against live Herdr works. Phone: install https://scttymn.github.io/ranchr/ , start the host from the Omarchy widget, open the magic link.

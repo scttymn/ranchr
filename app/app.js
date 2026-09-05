@@ -1,6 +1,51 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
+const STORE_HOST = "ranchr.host";
+const STORE_TOKEN = "ranchr.token";
+
+function absorbConnect() {
+  const q = new URLSearchParams(location.search);
+  const host = (q.get("host") || "").trim().replace(/\/$/, "");
+  const token = (q.get("t") || "").trim();
+  if (host) localStorage.setItem(STORE_HOST, host);
+  if (token) localStorage.setItem(STORE_TOKEN, token);
+  if (q.has("host") || q.has("t")) {
+    const next = new URL(location.href);
+    next.searchParams.delete("host");
+    next.searchParams.delete("t");
+    history.replaceState({}, "", next.pathname + next.search + next.hash);
+  }
+}
+
+function ranchHost() {
+  return (localStorage.getItem(STORE_HOST) || "").replace(/\/$/, "");
+}
+
+function ranchToken() {
+  return localStorage.getItem(STORE_TOKEN) || "";
+}
+
+function onPages() {
+  return location.hostname.endsWith("github.io");
+}
+
+function apiUrl(path) {
+  const host = ranchHost();
+  const base = host || (onPages() ? "" : location.origin);
+  if (!base) {
+    const err = new Error("no ranch connected");
+    err.code = "NO_RANCH";
+    throw err;
+  }
+  const url = new URL(path, base + "/");
+  const token = ranchToken();
+  if (token && host) url.searchParams.set("t", token);
+  return url.toString();
+}
+
+absorbConnect();
+
 const state = {
   herd: { host: "this PC", agents: [], blocked: 0, default_agent: "codex" },
   filter: "all",
@@ -26,9 +71,12 @@ function toast(msg) {
 }
 
 async function api(path, opts) {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
+  const headers = { "Content-Type": "application/json", ...(opts && opts.headers) };
+  const token = ranchToken();
+  if (token && ranchHost()) headers.Authorization = "Bearer " + token;
+  const res = await fetch(apiUrl(path), {
     ...opts,
+    headers,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || res.statusText);
@@ -571,10 +619,13 @@ async function loadHerd() {
     state.herd = await api("/api/herd");
     renderHerd();
   } catch (err) {
-    $("#host-name").textContent = "offline";
-    $("#herd-meta").textContent = err.message;
+    const disconnected = err.code === "NO_RANCH";
+    $("#host-name").textContent = disconnected ? "no ranch" : "offline";
+    $("#herd-meta").textContent = disconnected ? "not connected" : err.message;
     $("#herd-empty").hidden = false;
-    $("#herd-empty").innerHTML = `Can't reach Herdr.<br>Open a Herdr session on this PC, then refresh.<br><code>${escapeHtml(err.message)}</code>`;
+    $("#herd-empty").innerHTML = disconnected
+      ? "Start the host from the Ranchr bar widget, then open the magic link on this phone."
+      : `Can't reach Herdr.<br>Open a Herdr session on this PC, then refresh.<br><code>${escapeHtml(err.message)}</code>`;
   }
 }
 
@@ -634,7 +685,12 @@ function growComposer(box) {
 }
 
 function live() {
-  const src = new EventSource("/api/events");
+  let src;
+  try {
+    src = new EventSource(apiUrl("/api/events"));
+  } catch {
+    return;
+  }
   src.addEventListener("herd", (ev) => {
     try {
       const data = JSON.parse(ev.data);
@@ -658,5 +714,5 @@ loadHerd().then(() => {
 });
 live();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  navigator.serviceWorker.register("./sw.js").catch(() => {});
 }
