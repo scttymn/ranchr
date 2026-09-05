@@ -974,17 +974,50 @@ function renderQuestion(q) {
     btn.className = "q-opt" + (opt.n === cursor ? " on" : "");
     btn.innerHTML = `<span class="lab">${escapeHtml(String(opt.n) + ". " + (opt.label || ""))}</span>` +
       (opt.description ? `<span class="desc">${escapeHtml(opt.description)}</span>` : "");
-    btn.addEventListener("click", () => answerQuestion(opt.n, cursor));
+    btn.addEventListener("click", () => {
+      if (opt.input) {
+        showQuestionInput(opt.n);
+        return;
+      }
+      answerQuestion(opt.n);
+    });
     list.appendChild(btn);
   }
 }
 
-async function answerQuestion(index, cursor) {
+function showQuestionInput(index) {
+  const list = $("#q-options");
+  if (!list || list.querySelector(".q-custom")) return;
+  const wrap = document.createElement("div");
+  wrap.className = "q-custom";
+  wrap.innerHTML = `<input class="q-custom-input" type="text" placeholder="Your answer" /><button type="button" class="btn primary">Send</button>`;
+  const input = wrap.querySelector("input");
+  const send = wrap.querySelector("button");
+  const go = () => {
+    const text = (input.value || "").trim();
+    if (!text) {
+      input.focus();
+      return;
+    }
+    answerQuestion(index, text);
+  };
+  send.addEventListener("click", go);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      go();
+    }
+  });
+  list.appendChild(wrap);
+  input.focus();
+}
+
+async function answerQuestion(index, text) {
   if (!state.sessionId) return;
   try {
     await api(`/api/agents/${encodeURIComponent(state.sessionId)}/answer`, {
       method: "POST",
-      body: JSON.stringify({ index, cursor }),
+      body: JSON.stringify({ index, text: text || "" }),
     });
     const qel = $("#session-question");
     if (qel) qel.hidden = true;
@@ -1184,5 +1217,5 @@ loadHerd().then(() => {
 });
 live();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=ask-1").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=ask-2").catch(() => {});
 }

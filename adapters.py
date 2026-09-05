@@ -344,7 +344,12 @@ def parse_tui_question(text: str) -> dict | None:
                 if nxt.strip():
                     desc = (desc + " " + nxt.strip()).strip()
                 j += 1
-            options.append({"n": n, "label": label, "description": desc})
+            options.append({
+                "n": n,
+                "label": label,
+                "description": desc,
+                "input": bool(re.match(r"(?i)^type something\b", label)),
+            })
             i = j
             continue
         if ln.strip().endswith("?") and not options:

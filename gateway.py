@@ -934,17 +934,36 @@ class Handler(SimpleHTTPRequestHandler):
             if path.startswith("/api/agents/") and path.endswith("/answer"):
                 pane_id = unquote(path[len("/api/agents/") : -len("/answer")])
                 index = int(body.get("index") or 0)
-                cursor = int(body.get("cursor") or 1)
+                typed = (body.get("text") or "").strip()
                 if index < 1:
                     self._err(400, "index required")
                     return
-                delta = index - cursor
-                keys = (["down"] * delta if delta > 0 else ["up"] * (-delta)) + ["enter"]
-                try:
-                    herdr_ok("agent.focus", {"target": pane_id}, timeout=4.0)
-                except Exception:
-                    pass
-                herdr_ok("agent.send_keys", {"target": pane_id, "keys": keys}, timeout=4.0)
+                # Number keys jump to that row in Claude's list. Arrow names are
+                # easy to mis-map and show up as Esc ("request interrupted").
+                herdr_ok(
+                    "agent.send_keys",
+                    {"target": pane_id, "keys": [str(index)]},
+                    timeout=4.0,
+                )
+                time.sleep(0.12)
+                herdr_ok(
+                    "agent.send_keys",
+                    {"target": pane_id, "keys": ["enter"]},
+                    timeout=4.0,
+                )
+                if typed:
+                    time.sleep(0.2)
+                    herdr_ok(
+                        "pane.send_text",
+                        {"pane_id": pane_id, "text": typed},
+                        timeout=4.0,
+                    )
+                    time.sleep(0.08)
+                    herdr_ok(
+                        "agent.send_keys",
+                        {"target": pane_id, "keys": ["enter"]},
+                        timeout=4.0,
+                    )
                 self._json(200, {"ok": True, "index": index})
                 return
             if path == "/api/spawn":

@@ -643,6 +643,22 @@ button, .chip, .pick, .card, .fab {
   font-size: 12px;
   color: var(--muted);
 }
+.q-custom {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.q-custom-input {
+  flex: 1;
+  min-height: var(--tap);
+  border: 1px solid var(--hairline);
+  border-radius: 14px;
+  background: var(--bg-deep);
+  color: var(--fg-bright);
+  font: inherit;
+  padding: 0 14px;
+}
+.q-custom .btn { flex: 0 0 auto; min-width: 72px; }
 .row-btns { display: flex; gap: 8px; }
 .btn {
   flex: 1;
