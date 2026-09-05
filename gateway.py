@@ -30,7 +30,7 @@ HOST_STATE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")
 THEME_NAME_PATH = Path.home() / ".local/state/omarchy/current/theme.name"
 THEME_DIR = Path.home() / ".local/state/omarchy/current/theme"
 _THEME_LOCK = threading.Lock()
-_THEME_CACHE: dict = {"stamp": None, "css": b"", "slug": ""}
+_THEME_CACHE: dict = {"stamp": None, "css": b"", "vars": {}, "slug": ""}
 
 THEME_CSS_MAP = """\
   --bg: var(--omarchy-background);
@@ -70,12 +70,48 @@ def theme_rev() -> str:
     return f"{slug}:{int(latest)}"
 
 
+def _parse_theme_vars(css: str) -> dict[str, str]:
+    raw: dict[str, str] = {}
+    for line in css.splitlines():
+        line = line.strip().rstrip(";")
+        if not line.startswith("--") or ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        raw[key.strip()] = value.strip()
+
+    def resolve(val: str, depth: int = 0) -> str:
+        if depth > 8:
+            return val
+        m = re.fullmatch(r"var\((--[A-Za-z0-9-]+)(?:,\s*(.+))?\)$", val.strip())
+        if not m:
+            return val
+        key, fallback = m.group(1), m.group(2)
+        if key in raw:
+            return resolve(raw[key], depth + 1)
+        if fallback:
+            return resolve(fallback, depth + 1)
+        return val
+
+    return {key: resolve(value) for key, value in raw.items()}
+
+
 def theme_message() -> dict:
     stamp = theme_rev()
     css = theme_css().decode("utf-8", "replace") if stamp else ""
     if len(css) < 80:
         css = ""
-    return {"stamp": stamp, "theme": theme_slug(), "css": css}
+    vars_ = _parse_theme_vars(css) if css else {}
+    scheme = vars_.get("--omarchy-dark") or ""
+    if scheme not in ("light", "dark"):
+        scheme = "dark" if css else ""
+    return {
+        "type": "theme",
+        "stamp": stamp,
+        "theme": theme_slug(),
+        "scheme": scheme,
+        "vars": vars_,
+        "css": css,
+    }
 
 
 def _theme_stamp() -> tuple:
@@ -615,8 +651,12 @@ class Handler(SimpleHTTPRequestHandler):
                 now = time.time()
                 stamp = theme_rev()
                 if stamp != last_stamp:
+                    payload = json.dumps(theme_message()).encode()
+                    # Unnamed message so iOS EventSource.onmessage fires;
+                    # named event for addEventListener("theme").
+                    self.wfile.write(b"data: " + payload + b"\n\n")
                     self.wfile.write(b"event: theme\n")
-                    self.wfile.write(b"data: " + json.dumps(theme_message()).encode() + b"\n\n")
+                    self.wfile.write(b"data: " + payload + b"\n\n")
                     last_stamp = stamp
                 if now - last_herd_at >= 2:
                     try:

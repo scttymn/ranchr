@@ -126,51 +126,81 @@ const state = {
 
 const THEME_STORE = "ranchr.theme.css";
 const THEME_STAMP = "ranchr.theme.stamp";
+const THEME_VARS = "ranchr.theme.vars";
 
-function paintThemeCss(css) {
-  const old = document.getElementById("ranch-theme");
-  if (old) old.remove();
-  if (!css) {
-    document.documentElement.removeAttribute("data-ranch-theme");
-    try {
-      localStorage.removeItem(THEME_STORE);
-    } catch {
-      /* ignore */
-    }
-    return true;
+function parseCssVars(css) {
+  const vars = {};
+  if (!css) return vars;
+  for (const line of css.split("\n")) {
+    const t = line.trim().replace(/;$/, "");
+    if (!t.startsWith("--") || !t.includes(":")) continue;
+    const i = t.indexOf(":");
+    vars[t.slice(0, i).trim()] = t.slice(i + 1).trim();
   }
-  const tag = document.createElement("style");
-  tag.id = "ranch-theme";
-  tag.textContent = css;
-  document.head.appendChild(tag);
-  document.documentElement.setAttribute("data-ranch-theme", state.themeRev || "live");
-  try {
-    localStorage.setItem(THEME_STORE, css);
-  } catch {
-    /* private mode */
-  }
-  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({ type: "ranch-theme", css });
-  }
-  const bg = getComputedStyle(document.documentElement).getPropertyValue("--omarchy-background").trim()
-    || getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+  return vars;
+}
+
+function setChrome(scheme, bg) {
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta && bg.startsWith("#")) meta.setAttribute("content", bg);
-  return true;
+  if (meta) meta.setAttribute("content", bg && bg.startsWith("#") ? bg : (scheme === "light" ? "#f4f4f5" : "#1a1b26"));
+  let apple = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+  if (!apple) {
+    apple = document.createElement("meta");
+    apple.setAttribute("name", "apple-mobile-web-app-status-bar-style");
+    document.head.appendChild(apple);
+  }
+  apple.setAttribute("content", scheme === "light" ? "default" : "black-translucent");
+  document.documentElement.style.colorScheme = scheme || "";
+  document.documentElement.style.backgroundColor = bg || "";
+  if (document.body) document.body.style.backgroundColor = bg || "";
+  const app = document.querySelector(".app");
+  if (app) app.style.backgroundColor = bg || "";
+}
+
+function applyThemeVars(vars, scheme) {
+  const root = document.documentElement;
+  for (const key of state.themeVarKeys || []) root.style.removeProperty(key);
+  const keys = [];
+  if (!vars || !Object.keys(vars).length) {
+    state.themeVarKeys = [];
+    setChrome("dark", "");
+    root.removeAttribute("data-ranch-theme");
+    root.removeAttribute("data-scheme");
+    return;
+  }
+  for (const [key, value] of Object.entries(vars)) {
+    if (!key.startsWith("--") || value == null || value === "") continue;
+    root.style.setProperty(key, String(value));
+    keys.push(key);
+  }
+  state.themeVarKeys = keys;
+  const darkToken = vars["--omarchy-dark"] || "";
+  const mode = scheme === "light" || darkToken === "light" ? "light" : "dark";
+  const bg = vars["--omarchy-background"] || vars["--bg"] || "";
+  setChrome(mode, bg);
+  root.setAttribute("data-ranch-theme", state.themeRev || "live");
+  root.setAttribute("data-scheme", mode);
 }
 
 function applyThemeMessage(msg) {
   if (!msg) return;
   const stamp = msg.stamp || msg.rev || "";
-  const css = msg.css || "";
   if (stamp && stamp === state.themeRev && state.themeApplied) return;
-  paintThemeCss(css);
+  const vars = msg.vars && Object.keys(msg.vars).length ? msg.vars : parseCssVars(msg.css || "");
+  applyThemeVars(vars, msg.scheme || "");
+  if (msg.css && navigator.serviceWorker && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: "ranch-theme", css: msg.css });
+  }
   state.themeRev = stamp;
   state.themeSlug = msg.theme || "";
   state.themeApplied = true;
   try {
     if (stamp) localStorage.setItem(THEME_STAMP, stamp);
     else localStorage.removeItem(THEME_STAMP);
+    if (vars && Object.keys(vars).length) localStorage.setItem(THEME_VARS, JSON.stringify(vars));
+    else localStorage.removeItem(THEME_VARS);
+    if (msg.css) localStorage.setItem(THEME_STORE, msg.css);
+    else localStorage.removeItem(THEME_STORE);
   } catch {
     /* ignore */
   }
@@ -178,9 +208,10 @@ function applyThemeMessage(msg) {
 
 function bootCachedTheme() {
   try {
-    const css = localStorage.getItem(THEME_STORE) || "";
     const stamp = localStorage.getItem(THEME_STAMP) || "";
-    if (css) applyThemeMessage({ stamp, css });
+    const raw = localStorage.getItem(THEME_VARS);
+    const vars = raw ? JSON.parse(raw) : parseCssVars(localStorage.getItem(THEME_STORE) || "");
+    if (vars && Object.keys(vars).length) applyThemeMessage({ stamp, vars, css: localStorage.getItem(THEME_STORE) || "" });
   } catch {
     /* ignore */
   }
@@ -936,6 +967,14 @@ function live() {
         /* ignore */
       }
     });
+    src.onmessage = (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        if (data && data.type === "theme") applyThemeMessage(data);
+      } catch {
+        /* ignore */
+      }
+    };
     src.onerror = () => {
       if (src.readyState !== EventSource.CLOSED) return;
       src.close();
