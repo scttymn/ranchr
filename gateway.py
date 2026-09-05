@@ -30,30 +30,25 @@ HOST_STATE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")
 THEME_NAME_PATH = Path.home() / ".local/state/omarchy/current/theme.name"
 THEME_DIR = Path.home() / ".local/state/omarchy/current/theme"
 _THEME_LOCK = threading.Lock()
-_THEME_CACHE: dict = {"stamp": None, "css": b"", "vars": {}, "slug": ""}
+_THEME_CACHE: dict = {"stamp": None, "payload": None}
 
-THEME_CSS_MAP = """\
-  --bg: var(--omarchy-background);
-  --bg-deep: var(--omarchy-darker-background);
-  --raised: var(--omarchy-lighter-background);
-  --raised-2: color-mix(in srgb, var(--omarchy-lighter-background) 82%, var(--omarchy-foreground) 18%);
-  --fg: var(--omarchy-foreground);
-  --fg-bright: var(--omarchy-bright-foreground);
-  --fg-soft: var(--omarchy-light-foreground);
-  --muted: var(--omarchy-muted);
-  --frame: var(--omarchy-dark-foreground);
-  --accent: var(--omarchy-accent, var(--omarchy-blue));
-  --accent-bright: color-mix(in srgb, var(--accent) 70%, white);
-  --accent-soft: color-mix(in srgb, var(--accent) 42%, var(--omarchy-bright-foreground));
-  --green: var(--omarchy-green);
-  --green-bright: var(--omarchy-bright-green);
-  --green-glow: var(--omarchy-bright-green);
-  --cream: var(--omarchy-yellow);
-  --cream-bright: var(--omarchy-bright-yellow);
-  --cyan: var(--omarchy-cyan);
-  --hairline: color-mix(in srgb, var(--omarchy-foreground) 14%, transparent);
-  --glass: color-mix(in srgb, var(--omarchy-lighter-background) 78%, transparent);
-"""
+# App tokens <- omarchy-theme-color keys (first hex wins).
+COLOR_FROM = {
+    "bg": ("background", "bg"),
+    "bg-deep": ("darker_background", "dark_background", "background"),
+    "raised": ("lighter_background", "background"),
+    "fg": ("foreground",),
+    "fg-bright": ("bright_foreground", "foreground"),
+    "fg-soft": ("light_foreground", "foreground"),
+    "muted": ("muted",),
+    "accent": ("accent", "blue", "red"),
+    "accent-bright": ("bright_blue", "bright_red", "accent"),
+    "accent-soft": ("bright_magenta", "magenta", "accent"),
+    "green": ("green",),
+    "green-bright": ("bright_green", "green"),
+    "cream": ("yellow",),
+    "cyan": ("cyan",),
+}
 
 
 def theme_slug() -> str:
@@ -80,49 +75,63 @@ def theme_rev() -> str:
     return f"{slug}:{int(latest)}"
 
 
-def _parse_theme_vars(css: str) -> dict[str, str]:
-    raw: dict[str, str] = {}
-    for line in css.splitlines():
-        line = line.strip().rstrip(";")
-        if not line.startswith("--") or ":" not in line:
+def _omarchy_tokens() -> dict[str, str]:
+    try:
+        proc = subprocess.run(
+            ["omarchy-theme-color", "--all"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        raw = proc.stdout or ""
+    except Exception:
+        return {}
+    out: dict[str, str] = {}
+    for line in raw.splitlines():
+        if "\t" in line:
+            key, value = line.split("\t", 1)
+        elif "#" in line:
+            key, value = line.split("#", 1)
+            value = "#" + value
+        else:
             continue
-        key, value = line.split(":", 1)
-        raw[key.strip()] = value.strip()
+        key, value = key.strip(), value.strip()
+        if not re.fullmatch(r"[a-zA-Z0-9_]+", key):
+            continue
+        out[key] = value
+    return out
 
-    def resolve(val: str, depth: int = 0) -> str:
-        if depth > 8:
-            return val
-        m = re.fullmatch(r"var\((--[A-Za-z0-9-]+)(?:,\s*(.+))?\)$", val.strip())
-        if not m:
-            return val
-        key, fallback = m.group(1), m.group(2)
-        if key in raw:
-            return resolve(raw[key], depth + 1)
-        if fallback:
-            return resolve(fallback, depth + 1)
-        return val
 
-    return {key: resolve(value) for key, value in raw.items()}
+def theme_payload() -> dict:
+    stamp = theme_rev()
+    with _THEME_LOCK:
+        if _THEME_CACHE.get("payload") and _THEME_CACHE.get("stamp") == stamp:
+            return _THEME_CACHE["payload"]
+        tokens = _omarchy_tokens()
+        colors = {}
+        for dest, sources in COLOR_FROM.items():
+            for src in sources:
+                val = tokens.get(src) or ""
+                if val.startswith("#"):
+                    colors[dest] = val
+                    break
+        scheme = tokens.get("dark") or ""
+        if scheme not in ("light", "dark"):
+            scheme = "light" if _hex_is_light(colors.get("bg") or "") else "dark"
+        payload = {
+            "stamp": stamp,
+            "name": theme_slug(),
+            "scheme": scheme,
+            "colors": colors,
+        }
+        _THEME_CACHE["stamp"] = stamp
+        _THEME_CACHE["payload"] = payload
+        return payload
 
 
 def theme_message() -> dict:
-    stamp = theme_rev()
-    css = theme_css().decode("utf-8", "replace") if stamp else ""
-    if len(css) < 80:
-        css = ""
-    vars_ = _parse_theme_vars(css) if css else {}
-    scheme = vars_.get("--omarchy-dark") or ""
-    if scheme not in ("light", "dark"):
-        bg = vars_.get("--omarchy-background") or vars_.get("--bg") or ""
-        scheme = "light" if _hex_is_light(bg) else ("dark" if css else "")
-    return {
-        "type": "theme",
-        "stamp": stamp,
-        "theme": theme_slug(),
-        "scheme": scheme,
-        "vars": vars_,
-        "css": css,
-    }
+    return {"type": "theme", "payload": theme_payload()}
 
 
 def _theme_stamp() -> tuple:
@@ -135,63 +144,14 @@ def _theme_stamp() -> tuple:
     return (theme_slug(), latest)
 
 
-def _pretty_theme(slug: str) -> str:
-    return re.sub(r"(^|-)([a-z])", lambda m: (" " if m.group(1) else "") + m.group(2).upper(), slug or "Omarchy")
-
-
-def _build_theme_css() -> bytes:
-    slug = theme_slug() or "omarchy"
-    lines = [
-        f"/* ranch theme {slug} */",
-        ":root {",
-        f'  --theme-name: "{_pretty_theme(slug)}";',
-        f'  --theme-slug: "{slug}";',
-    ]
-    try:
-        proc = subprocess.run(
-            ["omarchy-theme-color", "--all"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-            check=False,
-        )
-        raw = proc.stdout or ""
-    except Exception:
-        raw = ""
-    for line in raw.splitlines():
-        if "\t" in line:
-            key, value = line.split("\t", 1)
-        elif "#" in line:
-            key, value = line.split("#", 1)
-            value = "#" + value
-        else:
-            continue
-        key, value = key.strip(), value.strip()
-        if not re.fullmatch(r"[a-zA-Z0-9_]+", key):
-            continue
-        if not (value.startswith("#") or value in {"dark", "light"} or value.startswith("rgb")):
-            continue
-        lines.append(f"  --omarchy-{key.replace('_', '-')}: {value};")
-    lines.append(THEME_CSS_MAP.rstrip())
+def theme_css() -> bytes:
+    pal = theme_payload()
+    lines = [":root {"]
+    for key, value in (pal.get("colors") or {}).items():
+        lines.append(f"  --{key}: {value};")
     lines.append("}")
     lines.append("")
-    return ("\n".join(lines)).encode()
-
-
-def theme_css() -> bytes:
-    stamp = _theme_stamp()
-    with _THEME_LOCK:
-        if _THEME_CACHE["css"] and _THEME_CACHE["stamp"] == stamp:
-            return _THEME_CACHE["css"]
-        css = _build_theme_css()
-        if len(css) < 80:
-            fallback = APP / "theme.css"
-            if fallback.is_file():
-                css = fallback.read_bytes()
-        _THEME_CACHE["stamp"] = stamp
-        _THEME_CACHE["css"] = css
-        _THEME_CACHE["slug"] = stamp[0]
-        return css
+    return "\n".join(lines).encode()
 
 
 def public_token() -> str:
@@ -324,8 +284,6 @@ def snapshot_herd() -> dict:
     return {
         "host": host,
         "default_agent": default_agent,
-        "theme": theme_slug(),
-        "theme_stamp": theme_rev(),
         "herdr": True,
         "blocked": blocked,
         "agents": agents,
@@ -632,7 +590,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.wfile.write(css)
             return
         if path == "/api/theme":
-            self._json(200, theme_message())
+            self._json(200, theme_payload())
             return
         if path == "/api/events":
             self._sse()
@@ -665,19 +623,16 @@ class Handler(SimpleHTTPRequestHandler):
                 now = time.time()
                 stamp = theme_rev()
                 if stamp != last_stamp:
-                    payload = json.dumps(theme_message(), separators=(",", ":"))
-                    self.wfile.write(b"event: theme\n")
-                    self.wfile.write(b"data: " + payload.encode() + b"\n\n")
+                    self._bus("theme", theme_payload())
                     last_stamp = stamp
                 if now - last_herd_at >= 2:
                     try:
                         herd = snapshot_herd()
-                        blob = json.dumps(herd, separators=(",", ":"))
                     except Exception as exc:
-                        blob = json.dumps({"error": str(exc), "agents": []})
+                        herd = {"error": str(exc), "agents": []}
+                    blob = json.dumps(herd, separators=(",", ":"))
                     if blob != last_herd:
-                        self.wfile.write(b"event: herd\n")
-                        self.wfile.write(b"data: " + blob.encode() + b"\n\n")
+                        self._bus("herd", herd)
                         last_herd = blob
                     last_herd_at = now
                 if now - last_beat_at >= 10:
@@ -687,6 +642,11 @@ class Handler(SimpleHTTPRequestHandler):
                 time.sleep(0.4)
         except BrokenPipeError:
             return
+
+    def _bus(self, action: str, payload: dict):
+        body = json.dumps({"type": action, "payload": payload}, separators=(",", ":")).encode()
+        self.wfile.write(f"event: {action}\n".encode())
+        self.wfile.write(b"data: " + body + b"\n\n")
 
     def do_POST(self):
         if not self._authorized():

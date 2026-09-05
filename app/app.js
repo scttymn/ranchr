@@ -124,21 +124,7 @@ const state = {
   themeApplied: false,
 };
 
-const THEME_STORE = "ranchr.theme.css";
-const THEME_STAMP = "ranchr.theme.stamp";
-const THEME_VARS = "ranchr.theme.vars";
-
-function parseCssVars(css) {
-  const vars = {};
-  if (!css) return vars;
-  for (const line of css.split("\n")) {
-    const t = line.trim().replace(/;$/, "");
-    if (!t.startsWith("--") || !t.includes(":")) continue;
-    const i = t.indexOf(":");
-    vars[t.slice(0, i).trim()] = t.slice(i + 1).trim();
-  }
-  return vars;
-}
+const THEME_STORE = "ranchr.theme";
 
 function setChrome(scheme, bg) {
   const color = bg && bg.startsWith("#") ? bg : (scheme === "light" ? "#f4f4f5" : "#1a1b26");
@@ -167,50 +153,29 @@ function setChrome(scheme, bg) {
   if (app) app.style.backgroundColor = color;
 }
 
-function applyThemeVars(vars, scheme) {
+function applyTheme(payload) {
+  if (!payload) return;
+  const stamp = payload.stamp || "";
+  if (stamp && stamp === state.themeRev && state.themeApplied) return;
+  const colors = payload.colors || {};
   const root = document.documentElement;
   for (const key of state.themeVarKeys || []) root.style.removeProperty(key);
   const keys = [];
-  if (!vars || !Object.keys(vars).length) {
-    state.themeVarKeys = [];
-    setChrome("dark", "");
-    root.removeAttribute("data-ranch-theme");
-    root.removeAttribute("data-scheme");
-    return;
-  }
-  for (const [key, value] of Object.entries(vars)) {
-    if (!key.startsWith("--") || value == null || value === "") continue;
-    root.style.setProperty(key, String(value));
+  for (const [name, hex] of Object.entries(colors)) {
+    if (typeof hex !== "string" || hex[0] !== "#") continue;
+    const key = name.startsWith("--") ? name : `--${name}`;
+    root.style.setProperty(key, hex);
     keys.push(key);
   }
   state.themeVarKeys = keys;
-  const darkToken = vars["--omarchy-dark"] || "";
-  const mode = scheme === "light" || darkToken === "light" ? "light" : "dark";
-  const bg = vars["--omarchy-background"] || vars["--bg"] || "";
-  setChrome(mode, bg);
-  root.setAttribute("data-ranch-theme", state.themeRev || "live");
-  root.setAttribute("data-scheme", mode);
-}
-
-function applyThemeMessage(msg) {
-  if (!msg) return;
-  const stamp = msg.stamp || msg.rev || "";
-  if (stamp && stamp === state.themeRev && state.themeApplied) return;
-  const vars = msg.vars && Object.keys(msg.vars).length ? msg.vars : parseCssVars(msg.css || "");
-  applyThemeVars(vars, msg.scheme || "");
-  if (msg.css && navigator.serviceWorker && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({ type: "ranch-theme", css: msg.css });
-  }
+  const scheme = payload.scheme === "light" ? "light" : "dark";
+  setChrome(scheme, colors.bg || "");
+  root.setAttribute("data-scheme", scheme);
   state.themeRev = stamp;
-  state.themeSlug = msg.theme || "";
+  state.themeSlug = payload.name || "";
   state.themeApplied = true;
   try {
-    if (stamp) localStorage.setItem(THEME_STAMP, stamp);
-    else localStorage.removeItem(THEME_STAMP);
-    if (vars && Object.keys(vars).length) localStorage.setItem(THEME_VARS, JSON.stringify(vars));
-    else localStorage.removeItem(THEME_VARS);
-    if (msg.css) localStorage.setItem(THEME_STORE, msg.css);
-    else localStorage.removeItem(THEME_STORE);
+    localStorage.setItem(THEME_STORE, JSON.stringify(payload));
   } catch {
     /* ignore */
   }
@@ -218,50 +183,34 @@ function applyThemeMessage(msg) {
 
 function bootCachedTheme() {
   try {
-    const stamp = localStorage.getItem(THEME_STAMP) || "";
-    const raw = localStorage.getItem(THEME_VARS);
-    const vars = raw ? JSON.parse(raw) : parseCssVars(localStorage.getItem(THEME_STORE) || "");
-    if (vars && Object.keys(vars).length) applyThemeMessage({ stamp, vars, css: localStorage.getItem(THEME_STORE) || "" });
+    const raw = localStorage.getItem(THEME_STORE);
+    if (raw) applyTheme(JSON.parse(raw));
   } catch {
     /* ignore */
   }
 }
 
-function themeHeaders() {
-  const headers = {};
-  const token = ranchToken();
-  if (token && ranchHost()) headers.Authorization = "Bearer " + token;
-  return headers;
-}
-
-async function pullRanchTheme(stamp, theme) {
-  try {
-    const res = await fetch(apiUrl("/api/theme"), { headers: themeHeaders(), cache: "no-store" });
-    if (!res.ok) return false;
-    const msg = await res.json();
-    if (stamp) msg.stamp = msg.stamp || stamp;
-    if (theme) msg.theme = msg.theme || theme;
-    applyThemeMessage(msg);
-    return true;
-  } catch {
-    return false;
+function onBus(raw) {
+  let msg = raw;
+  if (typeof raw === "string") {
+    try {
+      msg = JSON.parse(raw);
+    } catch {
+      return;
+    }
   }
-}
-
-function applyHerdTheme(herd) {
-  if (!herd) return;
-  const stamp = herd.theme_stamp || herd.theme_rev || herd.theme || "";
-  if (herd.theme_vars || herd.vars) {
-    applyThemeMessage({
-      stamp,
-      vars: herd.theme_vars || herd.vars || {},
-      css: herd.theme_css || "",
-      scheme: herd.scheme || "",
-      theme: herd.theme || "",
-    });
+  if (!msg || !msg.type) return;
+  const payload = msg.payload !== undefined ? msg.payload : msg;
+  if (msg.type === "theme") {
+    applyTheme(payload);
     return;
   }
-  if (stamp && stamp !== state.themeRev) pullRanchTheme(stamp, herd.theme);
+  if (msg.type === "herd") {
+    if (payload.error) return;
+    state.herd = payload;
+    renderHerd();
+    if (state.screen === "session") refreshSession();
+  }
 }
 
 function toast(msg) {
@@ -871,12 +820,10 @@ function escapeHtml(s) {
 async function loadHerd() {
   try {
     state.herd = await api("/api/herd");
-    try {
-      applyHerdTheme(state.herd);
-    } catch {
-      /* theme must not block chat */
-    }
     renderHerd();
+    api("/api/theme")
+      .then(applyTheme)
+      .catch(() => {});
   } catch (err) {
     const disconnected = err.code === "NO_RANCH";
     $("#host-name").textContent = disconnected ? "no ranch" : "offline";
@@ -949,9 +896,6 @@ function wire() {
     { passive: true }
   );
   $("#jump-latest").addEventListener("click", () => pinThread());
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") pullRanchTheme(state.themeRev, state.themeSlug);
-  });
 }
 
 function growComposer(box) {
@@ -973,29 +917,9 @@ function live() {
       timer = setTimeout(connect, 2000);
       return;
     }
-    src.addEventListener("herd", (ev) => {
-      try {
-        const data = JSON.parse(ev.data);
-        if (data.error) return;
-        state.herd = data;
-        try {
-          applyHerdTheme(data);
-        } catch {
-          /* theme must not block chat */
-        }
-        renderHerd();
-        if (state.screen === "session") refreshSession();
-      } catch {
-        /* ignore */
-      }
-    });
-    src.addEventListener("theme", (ev) => {
-      try {
-        applyThemeMessage(JSON.parse(ev.data));
-      } catch {
-        /* ignore */
-      }
-    });
+    src.addEventListener("herd", (ev) => onBus(ev.data));
+    src.addEventListener("theme", (ev) => onBus(ev.data));
+    src.onmessage = (ev) => onBus(ev.data);
     src.onerror = () => {
       if (src.readyState !== EventSource.CLOSED) return;
       src.close();
@@ -1014,5 +938,5 @@ loadHerd().then(() => {
 });
 live();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=theme-herd-2").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=bus-1").catch(() => {});
 }
