@@ -108,7 +108,7 @@ const state = {
   filter: "all",
   screen: "herd",
   sessionId: null,
-  sessionMode: "chat",
+  sessionMode: "term",
   kind: "codex",
   session: null,
   pendingUser: null,
@@ -117,6 +117,9 @@ const state = {
   skipById: {},
   noticesById: {},
   workOpen: {},
+  term: null,
+  termFit: null,
+  ttyAbort: null,
   chatStick: true,
   chatScrolling: false,
   themeSlug: "",
@@ -176,6 +179,13 @@ function applyTheme(payload) {
     if (accent) el.style.backgroundColor = accent;
     if (onAccent) el.style.color = onAccent;
   });
+  if (state.term) {
+    state.term.options.theme = {
+      background: colors["bg-deep"] || colors.bg || "#0e0e14",
+      foreground: colors.fg || "#a9b1d6",
+      cursor: colors.accent || "#7aa2f7",
+    };
+  }
   root.setAttribute("data-scheme", scheme);
   state.themeRev = stamp;
   state.themeSlug = payload.name || "";
@@ -474,6 +484,7 @@ async function openSession(id) {
   }
   await refreshSession();
   pinThread();
+  if (state.sessionMode === "term") startTty();
 }
 
 function stopPoll() {
@@ -700,7 +711,96 @@ function setSessionMode(mode) {
   $("#session-term").classList.toggle("on", mode === "term");
   updateJumpLatest();
   if (mode !== "term" && state.chatStick) pinThread();
-  if (changed && mode === "term") refreshSession();
+  if (changed) {
+    if (mode === "term") startTty();
+    else stopTty();
+  }
+}
+
+function ranchHeaders() {
+  const h = { "Content-Type": "application/json" };
+  const token = ranchToken();
+  if (token && ranchHost()) h.Authorization = "Bearer " + token;
+  return h;
+}
+
+function ensureTerm() {
+  const host = $("#session-term");
+  if (!host) return null;
+  if (state.term) return state.term;
+  const Term = window.Terminal;
+  if (!Term) return null;
+  const term = new Term({
+    convertEol: false,
+    fontSize: 13,
+    fontFamily: 'ui-monospace, "IBM Plex Mono", Menlo, monospace',
+    cursorBlink: true,
+    scrollback: 2000,
+    theme: {
+      background: getComputedStyle(document.documentElement).getPropertyValue("--bg-deep").trim() || "#0e0e14",
+      foreground: getComputedStyle(document.documentElement).getPropertyValue("--fg").trim() || "#a9b1d6",
+      cursor: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#7aa2f7",
+    },
+  });
+  term.open(host);
+  const fit = () => {
+    const cw = 9;
+    const ch = 17;
+    const cols = Math.max(40, Math.floor((host.clientWidth - 8) / cw));
+    const rows = Math.max(10, Math.floor((host.clientHeight - 8) / ch));
+    if (term.cols !== cols || term.rows !== rows) term.resize(cols, rows);
+  };
+  fit();
+  state.termFit = fit;
+  window.addEventListener("resize", fit);
+  state.term = term;
+  return term;
+}
+
+function stopTty() {
+  if (state.ttyAbort) {
+    state.ttyAbort.abort();
+    state.ttyAbort = null;
+  }
+}
+
+function startTty() {
+  stopTty();
+  if (state.screen !== "session" || state.sessionMode !== "term" || !state.sessionId) return;
+  const term = ensureTerm();
+  if (!term) return;
+  if (state.termFit) state.termFit();
+  const ac = new AbortController();
+  state.ttyAbort = ac;
+  const pane = state.sessionId;
+  let seq = 0;
+  const pump = async () => {
+    while (!ac.signal.aborted && state.screen === "session" && state.sessionMode === "term" && state.sessionId === pane) {
+      try {
+        const u = new URL(apiUrl(`/api/agents/${encodeURIComponent(pane)}/tty`));
+        u.searchParams.set("seq", String(seq));
+        u.searchParams.set("cols", String(term.cols || 80));
+        u.searchParams.set("rows", String(term.rows || 24));
+        const res = await fetch(u.toString(), {
+          headers: ranchHeaders(),
+          cache: "no-store",
+          signal: ac.signal,
+        });
+        const data = await res.json().catch(() => ({}));
+        for (const frame of data.frames || []) {
+          if (frame.full) term.reset();
+          const raw = frame.bytes || "";
+          const bin = Uint8Array.from(atob(raw), (c) => c.charCodeAt(0));
+          term.write(bin);
+          seq = Number(frame.seq) || seq;
+        }
+      } catch (err) {
+        if (ac.signal.aborted) return;
+        await new Promise((r) => setTimeout(r, 800));
+      }
+    }
+  };
+  pump();
 }
 
 const HERD_COMMANDS = new Set(["/clear", "/reset", "/new", "/cancel", "/stop"]);
@@ -925,6 +1025,7 @@ function wire() {
   $("#back-herd").addEventListener("click", () => go("herd"));
   $("#back-session").addEventListener("click", () => {
     stopPoll();
+    stopTty();
     setThinking(false);
     state.pendingUser = null;
     go("herd");
@@ -1029,5 +1130,5 @@ loadHerd().then(() => {
 });
 live();
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js?v=send-theme-1").catch(() => {});
+  navigator.serviceWorker.register("./sw.js?v=tty-1").catch(() => {});
 }

@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import threading
@@ -354,6 +355,113 @@ def read_session(pane_id: str, include_tty: bool = False) -> dict:
     }
 
 
+class _TtyWatch:
+    def __init__(self, pane_id: str, cols: int, rows: int):
+        self.pane_id = pane_id
+        self.cols = cols
+        self.rows = rows
+        self.cv = threading.Condition()
+        self.frames: list[dict] = []
+        self.proc: subprocess.Popen | None = None
+        self.alive = True
+        self._start()
+        threading.Thread(target=self._pump, name=f"tty-{pane_id}", daemon=True).start()
+
+    def _start(self):
+        herdr = shutil.which("herdr") or "herdr"
+        env = os.environ.copy()
+        env["HERDR_SOCKET_PATH"] = SOCKET_PATH
+        cmd = [
+            herdr,
+            "terminal",
+            "session",
+            "observe",
+            self.pane_id,
+            "--cols",
+            str(self.cols),
+            "--rows",
+            str(self.rows),
+        ]
+        stdbuf = shutil.which("stdbuf")
+        if stdbuf:
+            cmd = [stdbuf, "-oL", "-eL", *cmd]
+        self.proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=env,
+            bufsize=1,
+        )
+
+    def _pump(self):
+        assert self.proc and self.proc.stdout
+        try:
+            for line in self.proc.stdout:
+                if not self.alive:
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    frame = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if frame.get("type") != "terminal.frame":
+                    continue
+                with self.cv:
+                    if frame.get("full"):
+                        self.frames = [frame]
+                    else:
+                        self.frames.append(frame)
+                        if len(self.frames) > 200:
+                            self.frames = self.frames[-120:]
+                    self.cv.notify_all()
+        finally:
+            self.alive = False
+            with self.cv:
+                self.cv.notify_all()
+
+    def wait_since(self, seq: int, timeout: float = 12.0) -> list[dict]:
+        deadline = time.time() + timeout
+        with self.cv:
+            while True:
+                newer = [f for f in self.frames if int(f.get("seq") or 0) > seq]
+                if newer or not self.alive:
+                    return newer
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    return []
+                self.cv.wait(timeout=min(0.25, remaining))
+
+    def stop(self):
+        self.alive = False
+        if self.proc and self.proc.poll() is None:
+            self.proc.kill()
+        with self.cv:
+            self.cv.notify_all()
+
+
+class TtyBroker:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.watchers: dict[str, _TtyWatch] = {}
+
+    def frames(self, pane_id: str, seq: int, cols: int, rows: int) -> list[dict]:
+        key = pane_id
+        with self.lock:
+            watch = self.watchers.get(key)
+            if watch and (watch.cols != cols or watch.rows != rows or not watch.alive):
+                watch.stop()
+                watch = None
+            if watch is None:
+                watch = _TtyWatch(pane_id, cols, rows)
+                self.watchers[key] = watch
+        return watch.wait_since(seq)
+
+
+TTY = TtyBroker()
+
+
 def default_kind() -> str:
     raw = ""
     agent_file = Path.home() / ".config/omarchy/defaults/agent"
@@ -572,6 +680,22 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/herd":
             try:
                 self._json(200, snapshot_herd())
+            except Exception as exc:
+                self._err(502, str(exc))
+            return
+        if path.startswith("/api/agents/") and path.endswith("/tty"):
+            pane_id = unquote(path[len("/api/agents/") : -len("/tty")])
+            q = parse_qs(urlparse(self.path).query)
+            try:
+                seq = int((q.get("seq") or ["0"])[0] or 0)
+                cols = max(40, min(200, int((q.get("cols") or ["80"])[0] or 80)))
+                rows = max(10, min(80, int((q.get("rows") or ["24"])[0] or 24)))
+            except ValueError:
+                self._err(400, "bad tty query")
+                return
+            try:
+                frames = TTY.frames(pane_id, seq, cols, rows)
+                self._json(200, {"frames": frames})
             except Exception as exc:
                 self._err(502, str(exc))
             return

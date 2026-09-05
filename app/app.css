@@ -514,24 +514,13 @@ button, .chip, .pick, .card, .fab {
   background: var(--bg-deep);
   border: 1px solid var(--hairline);
   border-radius: 16px;
-  padding: 12px;
-  font-family: ui-monospace, "IBM Plex Mono", monospace;
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--fg);
-  overflow: auto;
-  white-space: pre-wrap;
+  padding: 8px;
+  overflow: hidden;
   display: none;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--fg) 28%, transparent) transparent;
 }
-.term::-webkit-scrollbar { width: 5px; }
-.term::-webkit-scrollbar-track { background: transparent; }
-.term::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--fg) 22%, transparent);
-  border-radius: 99px;
-}
-.term.on { display: block; }
+.term.on { display: flex; }
+.term .xterm { height: 100%; width: 100%; }
+.term .xterm-viewport { overflow-y: auto !important; }
 
 .jump-latest {
   position: absolute;

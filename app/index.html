@@ -9,11 +9,12 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Ranchr" />
   <title>Ranchr</title>
-  <script src="./connect.js?v=send-theme-1"></script>
+  <script src="./connect.js?v=tty-1"></script>
   <link rel="icon" href="./icon.svg" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
-  <link rel="stylesheet" href="./app.css?v=send-theme-1" />
-  <link rel="stylesheet" href="./theme.css?v=send-theme-1" />
+  <link rel="stylesheet" href="./app.css?v=tty-1" />
+  <link rel="stylesheet" href="./theme.css?v=tty-1" />
+  <link rel="stylesheet" href="./vendor/xterm/xterm.css" />
 </head>
 <body>
   <div class="app">
@@ -73,14 +74,14 @@
         <span class="pip idle" id="session-pip"></span>
       </div>
       <div class="seg">
-        <button class="on" data-mode="chat">Chat</button>
-        <button data-mode="term">Terminal</button>
+        <button data-mode="chat">Chat</button>
+        <button class="on" data-mode="term">Terminal</button>
       </div>
-      <div class="thread-wrap" id="thread-wrap">
+      <div class="thread-wrap off" id="thread-wrap">
         <div class="thread" id="session-thread"></div>
         <button type="button" class="jump-latest" id="jump-latest" hidden>↓ Latest</button>
       </div>
-      <pre class="term" id="session-term"></pre>
+      <div class="term on" id="session-term"></div>
       <div class="sticky-need" id="session-need" hidden>
         <h3>Allow this?</h3>
         <p id="session-need-text"></p>
@@ -126,6 +127,7 @@
     </div>
     <div class="toast" id="toast"></div>
   </div>
-  <script src="./app.js?v=send-theme-1"></script>
+  <script src="./vendor/xterm/xterm.min.js"></script>
+  <script src="./app.js?v=tty-1"></script>
 </body>
 </html>
