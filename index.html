@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Herd — remote client mock</title>
+  <style>
+    :root {
+      /* Fallback if theme.css is missing. Live Omarchy palette overrides this. */
+      --bg: #0b0d11;
+      --bg-deep: #060709;
+      --raised: #19171c;
+      --raised-2: #221e24;
+      --fg: #f0b7ca;
+      --fg-bright: #fff1f6;
+      --fg-soft: #d8c6cc;
+      --muted: #678270;
+      --frame: #4a5d46;
+      --accent: #f23888;
+      --accent-bright: #ff6aa7;
+      --accent-soft: #ffd0dc;
+      --pink-soft: var(--accent-soft);
+      --green: #5aa15d;
+      --green-bright: #86bf86;
+      --green-glow: #86bf86;
+      --cream: #d7be96;
+      --cream-bright: #e6d3b4;
+      --cyan: #6f9485;
+      --glass: color-mix(in srgb, var(--raised) 78%, transparent);
+      --hairline: color-mix(in srgb, var(--fg) 14%, transparent);
+      --shadow: 0 24px 80px color-mix(in srgb, var(--bg-deep) 70%, black);
+      --radius: 22px;
+      --phone-w: 384px;
+      --phone-h: 844px;
+      --theme-name: "Omarchy";
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      color: var(--fg);
+      background:
+        radial-gradient(1200px 700px at 15% -10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 55%),
+        radial-gradient(900px 600px at 90% 110%, color-mix(in srgb, var(--green) 14%, transparent), transparent 50%),
+        var(--bg-deep);
+      font-family: "Segoe UI", "IBM Plex Sans", "Helvetica Neue", system-ui, sans-serif;
+      letter-spacing: 0.01em;
+    }
+
+    .stage {
+      min-height: 100%;
+      display: grid;
+      grid-template-columns: 220px 1fr 280px;
+      gap: 28px;
+      padding: 36px 40px;
+      align-items: start;
+    }
+
+    .rail, .notes {
+      position: sticky;
+      top: 36px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--fg-bright);
+      letter-spacing: -0.03em;
+    }
+    .brand span {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--muted);
+    }
+
+    .thumbs {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .thumb {
+      appearance: none;
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--fg-soft);
+      border-radius: 14px;
+      padding: 10px 12px;
+      cursor: pointer;
+      font: inherit;
+    }
+    .thumb:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+    .thumb.active {
+      background: color-mix(in srgb, var(--accent) 14%, transparent);
+      border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+      color: var(--fg-bright);
+    }
+    .thumb small {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .phone-wrap {
+      display: flex;
+      justify-content: center;
+      padding-top: 8px;
+    }
+    .device {
+      position: relative;
+      padding: 7px;
+      background: linear-gradient(160deg, color-mix(in srgb, var(--frame) 55%, var(--bg-deep)), var(--bg-deep));
+      border-radius: 32px;
+      box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--fg) 8%, transparent),
+        var(--shadow);
+    }
+    .device::before,
+    .device::after {
+      content: "";
+      position: absolute;
+      right: -3px;
+      width: 3px;
+      border-radius: 2px 0 0 2px;
+      background: color-mix(in srgb, var(--frame) 80%, black);
+    }
+    .device::before { top: 118px; height: 52px; }
+    .device::after { top: 180px; height: 72px; }
+    .phone {
+      width: var(--phone-w);
+      height: var(--phone-h);
+      background: var(--bg);
+      border-radius: 26px;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .punch {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      width: 12px;
+      height: 12px;
+      margin-left: -6px;
+      border-radius: 50%;
+      background: #050506;
+      box-shadow: 0 0 0 2.5px #121214, inset 0 0 2px #3a3a42;
+      z-index: 12;
+    }
+    .status-bar {
+      height: 36px;
+      padding: 10px 22px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--fg-bright);
+      position: relative;
+      z-index: 7;
+    }
+    .status-bar .sig {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      color: var(--fg);
+    }
+    .status-bar svg { display: block; }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green-bright);
+      box-shadow: 0 0 10px var(--green-bright);
+    }
+
+    .screen {
+      flex: 1;
+      display: none;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .screen.active { display: flex; }
+
+    .app-bar {
+      padding: 6px 20px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .host {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .host .name {
+      font-size: 18px;
+      font-weight: 650;
+      color: var(--fg-bright);
+      letter-spacing: -0.03em;
+    }
+    .host .meta {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .icon-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 14px;
+      border: 1px solid var(--hairline);
+      background: var(--glass);
+      color: var(--fg);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      position: relative;
+    }
+    .badge {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: 99px;
+      background: var(--accent);
+      color: var(--fg-bright);
+      font-size: 10px;
+      font-weight: 700;
+      display: grid;
+      place-items: center;
+    }
+
+    .filters {
+      display: flex;
+      gap: 8px;
+      padding: 0 20px 12px;
+      overflow-x: auto;
+    }
+    .chip {
+      border: 1px solid var(--hairline);
+      background: transparent;
+      color: var(--fg-soft);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .chip.on {
+      background: color-mix(in srgb, var(--accent) 16%, transparent);
+      border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+      color: var(--fg-bright);
+    }
+    .card.is-hidden { display: none; }
+    .empty-filter {
+      display: none;
+      margin: 28px 8px 0;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .empty-filter.show { display: block; }
+
+    .scroll {
+      flex: 1;
+      overflow: auto;
+      padding: 4px 16px 96px;
+    }
+    .scroll::-webkit-scrollbar { width: 0; }
+
+    .card {
+      background: linear-gradient(180deg, color-mix(in srgb, var(--raised) 88%, var(--fg)), var(--raised));
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius);
+      padding: 14px 14px 12px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+    .card.needs {
+      border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent), 0 0 24px color-mix(in srgb, var(--accent) 8%, transparent);
+    }
+    .card-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .pip {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex: none;
+    }
+    .pip.blocked { background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+    .pip.working { background: var(--green-bright); box-shadow: 0 0 10px var(--green); }
+    .pip.done { background: var(--cream); }
+    .pip.idle { background: var(--muted); }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.45; }
+    }
+    .who { flex: 1; min-width: 0; }
+    .who .title {
+      font-size: 15px;
+      font-weight: 650;
+      color: var(--fg-bright);
+    }
+    .who .sub {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: ui-monospace, "IBM Plex Mono", "Cascadia Mono", monospace;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .when {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .preview {
+      margin: 10px 0 0 20px;
+      font-size: 13px;
+      line-height: 1.35;
+      color: var(--fg-soft);
+    }
+    .preview em {
+      font-style: normal;
+      color: var(--accent-bright);
+    }
+    .tags {
+      margin: 10px 0 0 20px;
+      display: flex;
+      gap: 6px;
+    }
+    .tag {
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      border: 1px solid color-mix(in srgb, var(--cyan) 28%, transparent);
+      padding: 3px 7px;
+      border-radius: 999px;
+    }
+    .tag.pink {
+      color: var(--accent-soft);
+      border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+    }
+
+    .fab {
+      position: absolute;
+      right: 20px;
+      bottom: 28px;
+      height: 52px;
+      padding: 0 18px 0 16px;
+      border: 0;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 65%, black));
+      color: var(--fg-bright);
+      font: inherit;
+      font-weight: 650;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      box-shadow: 0 12px 30px color-mix(in srgb, var(--accent) 35%, transparent);
+      z-index: 6;
+    }
+
+    .home-ind {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 128px;
+      height: 5px;
+      border-radius: 99px;
+      background: color-mix(in srgb, var(--fg-bright) 28%, transparent);
+      z-index: 9;
+    }
+
+    /* Session */
+    .back-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 16px 10px;
+    }
+    .ghost {
+      appearance: none;
+      background: transparent;
+      border: 0;
+      color: var(--fg);
+      font: inherit;
+      cursor: pointer;
+      padding: 8px;
+    }
+    .seg {
+      display: flex;
+      background: var(--raised);
+      border-radius: 12px;
+      padding: 3px;
+      margin: 0 20px 10px;
+      border: 1px solid var(--hairline);
+    }
+    .seg button {
+      flex: 1;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 13px;
+      padding: 7px 0;
+      border-radius: 9px;
+      cursor: pointer;
+    }
+    .seg button.on {
+      background: color-mix(in srgb, var(--accent) 18%, transparent);
+      color: var(--fg-bright);
+    }
+
+    .thread {
+      flex: 1;
+      overflow: auto;
+      padding: 8px 16px 12px;
+    }
+    .msg {
+      max-width: 92%;
+      margin: 10px 0;
+      padding: 10px 12px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .msg.you {
+      margin-left: auto;
+      background: color-mix(in srgb, var(--accent) 18%, transparent);
+      border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+      color: var(--fg-bright);
+      border-bottom-right-radius: 6px;
+    }
+    .msg.agent {
+      background: var(--raised);
+      border: 1px solid var(--hairline);
+      border-bottom-left-radius: 6px;
+    }
+    .msg .kicker {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .tool {
+      margin: 8px 0;
+      border: 1px dashed color-mix(in srgb, var(--cyan) 28%, transparent);
+      border-radius: 14px;
+      padding: 10px 12px;
+      font-size: 12px;
+      color: var(--cyan);
+      font-family: ui-monospace, monospace;
+    }
+    .tool b { color: var(--green-glow); font-weight: 600; }
+
+    .sticky-need {
+      margin: 0 16px 8px;
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+      border-radius: 16px;
+      padding: 12px;
+    }
+    .sticky-need h3 {
+      margin: 0 0 4px;
+      font-size: 13px;
+      color: var(--accent-soft);
+    }
+    .sticky-need p {
+      margin: 0 0 10px;
+      font-size: 12px;
+      color: var(--fg-soft);
+      font-family: ui-monospace, monospace;
+    }
+    .row-btns { display: flex; gap: 8px; }
+    .btn {
+      flex: 1;
+      border: 0;
+      border-radius: 12px;
+      padding: 10px 8px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    .btn.primary { background: var(--accent); color: var(--fg-bright); }
+    .btn.quiet {
+      background: transparent;
+      color: var(--fg);
+      border: 1px solid var(--hairline);
+    }
+    .btn.danger { background: transparent; color: var(--cream); border: 1px solid color-mix(in srgb, var(--cream) 25%, transparent); }
+
+    .composer {
+      display: flex;
+      gap: 8px;
+      padding: 8px 16px 22px;
+      align-items: flex-end;
+    }
+    .composer textarea {
+      flex: 1;
+      resize: none;
+      height: 44px;
+      border-radius: 16px;
+      border: 1px solid var(--hairline);
+      background: var(--raised);
+      color: var(--fg-bright);
+      font: inherit;
+      padding: 12px 14px;
+      outline: none;
+    }
+    .composer .send {
+      width: 44px;
+      height: 44px;
+      border: 0;
+      border-radius: 16px;
+      background: var(--accent);
+      color: var(--fg-bright);
+      cursor: pointer;
+      font-size: 18px;
+    }
+
+    .term {
+      flex: 1;
+      margin: 0 16px 12px;
+      background: var(--bg-deep);
+      border: 1px solid var(--hairline);
+      border-radius: 16px;
+      padding: 12px;
+      font-family: ui-monospace, "IBM Plex Mono", monospace;
+      font-size: 11.5px;
+      line-height: 1.45;
+      color: var(--fg);
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+    .term .g { color: var(--green-bright); }
+    .term .p { color: var(--accent-bright); }
+    .term .m { color: var(--muted); }
+    .term .c { color: var(--cream-bright); }
+
+    /* Sheets */
+    .sheet-scrim {
+      position: absolute;
+      inset: 0;
+      background: color-mix(in srgb, var(--bg-deep) 55%, transparent);
+      display: none;
+      z-index: 10;
+    }
+    .sheet-scrim.on { display: block; }
+    .sheet {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      background: linear-gradient(180deg, var(--raised-2), var(--bg-deep));
+      border-top: 1px solid var(--hairline);
+      border-radius: 28px 28px 0 0;
+      padding: 14px 20px 34px;
+      z-index: 11;
+      transform: translateY(110%);
+      transition: transform 0.28s ease;
+    }
+    .sheet.open { transform: translateY(0); }
+    .grab {
+      width: 42px; height: 4px; border-radius: 99px;
+      background: color-mix(in srgb, var(--fg) 25%, transparent);
+      margin: 0 auto 14px;
+    }
+    .sheet h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+      color: var(--fg-bright);
+    }
+    .field { margin-bottom: 12px; }
+    .field label {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .field .box {
+      background: var(--bg);
+      border: 1px solid var(--hairline);
+      border-radius: 14px;
+      padding: 12px 14px;
+      font-size: 14px;
+      color: var(--fg-bright);
+    }
+    .picks { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pick {
+      border: 1px solid var(--hairline);
+      background: transparent;
+      color: var(--fg);
+      border-radius: 12px;
+      padding: 8px 12px;
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .pick.on {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 16%, transparent);
+      color: var(--fg-bright);
+    }
+
+    .notes {
+      color: var(--fg-soft);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .notes h2 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .notes p { margin: 0 0 12px; }
+    .notes ul { margin: 0; padding-left: 18px; color: var(--fg-soft); }
+    .notes li { margin-bottom: 8px; }
+    .swatches { display: flex; gap: 8px; margin: 16px 0 8px; }
+    .swatch {
+      width: 22px; height: 22px; border-radius: 50%;
+      border: 1px solid var(--hairline);
+    }
+
+    @media (max-width: 980px) {
+      .stage { grid-template-columns: 1fr; padding: 16px; }
+      .rail, .notes { position: static; }
+      .phone-wrap { padding: 8px 0 24px; }
+    }
+  </style>
+  <link rel="stylesheet" href="theme.css" />
+</head>
+<body>
+  <div class="stage">
+    <aside class="rail">
+      <div class="brand">
+        <h1>herd</h1>
+        <span id="theme-label">visual mock</span>
+      </div>
+      <div class="thumbs">
+        <button class="thumb active" data-go="herd">
+          Herd
+          <small>every agent on this PC</small>
+        </button>
+        <button class="thumb" data-go="inbox">
+          Needs you
+          <small>approvals, not a TTY y/n</small>
+        </button>
+        <button class="thumb" data-go="session">
+          Session · chat
+          <small>drive the same Codex pane</small>
+        </button>
+        <button class="thumb" data-go="terminal">
+          Session · terminal
+          <small>raw PTY when you need it</small>
+        </button>
+        <button class="thumb" data-go="spawn">
+          New agent
+          <small>spawn into a workspace</small>
+        </button>
+      </div>
+    </aside>
+
+    <div class="phone-wrap">
+      <div class="device">
+      <div class="phone" id="phone">
+        <div class="punch" aria-hidden="true"></div>
+        <div class="status-bar">
+          <span>9:41</span>
+          <span class="sig">
+            <span class="dot" title="on tailnet"></span>
+            <svg width="14" height="12" viewBox="0 0 14 12" fill="none" aria-hidden="true">
+              <path d="M1 8.2c3.2-3.2 8.8-3.2 12 0" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+              <path d="M3.2 9.6c2-2 5.6-2 7.6 0" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+              <circle cx="7" cy="11" r="0.9" fill="currentColor"/>
+            </svg>
+            <svg width="18" height="10" viewBox="0 0 18 10" fill="none" aria-hidden="true">
+              <rect x="0.7" y="0.7" width="14.6" height="8.6" rx="1.6" stroke="currentColor" stroke-width="1.3"/>
+              <rect x="2" y="2" width="10" height="6" rx="0.6" fill="var(--green-bright)"/>
+              <path d="M16.2 3.2v3.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+          </span>
+        </div>
+
+        <!-- HERD -->
+        <section class="screen active" id="herd">
+          <div class="app-bar">
+            <div class="host">
+              <div class="name">scttymn</div>
+              <div class="meta" id="herd-meta">Omarchy · 4 agents live</div>
+            </div>
+            <button class="icon-btn" onclick="go('inbox')" title="Needs you">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M2.5 8.5h2.2l1.1 2h4.4l1.1-2h2.2v4.2a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1V8.5Z" stroke="currentColor" stroke-width="1.3"/>
+                <path d="M3 8.5 8 3.8 13 8.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+              </svg>
+              <span class="badge">1</span>
+            </button>
+          </div>
+          <div class="filters" role="tablist" aria-label="Filter agents">
+            <button class="chip on" data-filter="all">All</button>
+            <button class="chip" data-filter="blocked">Needs you</button>
+            <button class="chip" data-filter="working">Working</button>
+          </div>
+          <div class="scroll">
+            <article class="card needs" data-status="blocked" onclick="go('session')">
+              <div class="card-top">
+                <span class="pip blocked"></span>
+                <div class="who">
+                  <div class="title">Codex</div>
+                  <div class="sub">~/Work/equip</div>
+                </div>
+                <div class="when">now</div>
+              </div>
+              <div class="preview"><em>Needs you ·</em> git push origin main — allow?</div>
+              <div class="tags"><span class="tag pink">blocked</span><span class="tag">default agent</span></div>
+            </article>
+
+            <article class="card" data-status="working" onclick="go('working')">
+              <div class="card-top">
+                <span class="pip working"></span>
+                <div class="who">
+                  <div class="title">OpenCode</div>
+                  <div class="sub">~/Work/omarchy-review-bot-widget</div>
+                </div>
+                <div class="when">2m</div>
+              </div>
+              <div class="preview">Reading Service.qml, then wiring the heal path…</div>
+              <div class="tags"><span class="tag">working</span><span class="tag">glm-5.3-flash</span></div>
+            </article>
+
+            <article class="card" data-status="done">
+              <div class="card-top">
+                <span class="pip done"></span>
+                <div class="who">
+                  <div class="title">Claude</div>
+                  <div class="sub">~/Work · crash diagnosis</div>
+                </div>
+                <div class="when">18m</div>
+              </div>
+              <div class="preview">Wrote the report. Waiting on your next prompt.</div>
+              <div class="tags"><span class="tag">done</span></div>
+            </article>
+
+            <article class="card" data-status="idle">
+              <div class="card-top">
+                <span class="pip idle"></span>
+                <div class="who">
+                  <div class="title">OpenCode</div>
+                  <div class="sub">~/Work/pwa-store</div>
+                </div>
+                <div class="when">1h</div>
+              </div>
+              <div class="preview">Idle in plan mode.</div>
+              <div class="tags"><span class="tag">idle</span></div>
+            </article>
+            <p class="empty-filter" id="filter-empty">Nothing in this filter.</p>
+          </div>
+          <button class="fab" onclick="openSheet('spawn-sheet')">＋  New agent</button>
+        </section>
+
+        <!-- INBOX -->
+        <section class="screen" id="inbox">
+          <div class="back-row">
+            <button class="ghost" onclick="go('herd')">‹ Herd</button>
+          </div>
+          <div class="app-bar">
+            <div class="host">
+              <div class="name">Needs you</div>
+              <div class="meta">one blocked pane</div>
+            </div>
+          </div>
+          <div class="scroll">
+            <article class="card needs" onclick="go('session')">
+              <div class="card-top">
+                <span class="pip blocked"></span>
+                <div class="who">
+                  <div class="title">Codex wants to run a command</div>
+                  <div class="sub">~/Work/equip</div>
+                </div>
+              </div>
+              <div class="preview">git push origin main</div>
+              <div class="row-btns" style="margin-top:12px" onclick="event.stopPropagation()">
+                <button class="btn quiet">Deny</button>
+                <button class="btn quiet">Once</button>
+                <button class="btn primary" onclick="go('session')">Allow</button>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <!-- SESSION CHAT -->
+        <section class="screen" id="session">
+          <div class="back-row">
+            <button class="ghost" onclick="go('herd')">‹ Herd</button>
+            <div class="host" style="flex:1">
+              <div class="name">Codex</div>
+              <div class="meta">~/Work/equip · blocked</div>
+            </div>
+            <span class="pip blocked"></span>
+          </div>
+          <div class="seg">
+            <button class="on">Chat</button>
+            <button onclick="go('terminal')">Terminal</button>
+          </div>
+          <div class="thread">
+            <div class="msg you">Ship the prototype auth flow and open a PR.</div>
+            <div class="msg agent">
+              <div class="kicker">Codex</div>
+              Scaffolded the session plug, then the LiveView mount. Tests are green. I need to push the branch.
+            </div>
+            <div class="tool"><b>write</b> lib/equip_web/live/session_live.ex</div>
+            <div class="tool"><b>bash</b> mix test</div>
+          </div>
+          <div class="sticky-need">
+            <h3>Allow this command?</h3>
+            <p>git push origin main</p>
+            <div class="row-btns">
+              <button class="btn danger">Deny</button>
+              <button class="btn quiet">Once</button>
+              <button class="btn primary">Always</button>
+            </div>
+          </div>
+          <div class="composer">
+            <textarea placeholder="Steer this session…"></textarea>
+            <button class="send">↑</button>
+          </div>
+        </section>
+
+        <!-- WORKING SESSION -->
+        <section class="screen" id="working">
+          <div class="back-row">
+            <button class="ghost" onclick="go('herd')">‹ Herd</button>
+            <div class="host" style="flex:1">
+              <div class="name">OpenCode</div>
+              <div class="meta">glm-5.3-flash · working</div>
+            </div>
+            <span class="pip working"></span>
+          </div>
+          <div class="seg">
+            <button class="on">Chat</button>
+            <button onclick="go('terminal')">Terminal</button>
+          </div>
+          <div class="thread">
+            <div class="msg you">Review the heal path. Don’t touch dispatch.</div>
+            <div class="msg agent">
+              <div class="kicker">OpenCode</div>
+              Heal currently aborts in-flight reviews when the default agent changes. I’m tracing whether a wedged slot can survive a widget stop.
+            </div>
+            <div class="tool"><b>read</b> Service.qml</div>
+            <div class="tool"><b>grep</b> reap_stale|heal</div>
+          </div>
+          <div class="composer">
+            <textarea placeholder="Nudge, or let it run…"></textarea>
+            <button class="send">↑</button>
+          </div>
+        </section>
+
+        <!-- TERMINAL -->
+        <section class="screen" id="terminal">
+          <div class="back-row">
+            <button class="ghost" onclick="go('herd')">‹ Herd</button>
+            <div class="host" style="flex:1">
+              <div class="name">Codex</div>
+              <div class="meta">same pane · raw PTY</div>
+            </div>
+          </div>
+          <div class="seg">
+            <button onclick="go('session')">Chat</button>
+            <button class="on">Terminal</button>
+          </div>
+          <div class="term"><span class="m">herd · equip · Codex</span>
+<span class="g">●</span> working   <span class="p">◉</span> blocked   <span class="c">●</span> done
+
+<span class="p">❯ allow git push origin main?  [y/n/always]</span>
+
+<span class="m">mix test .............. 42 passed</span>
+<span class="g">✓</span> session_live_test.exs
+
+<span class="c">codex</span> I can push once you approve.
+</div>
+          <div class="composer">
+            <textarea placeholder="Keys go to the PTY…"></textarea>
+            <button class="send">↵</button>
+          </div>
+        </section>
+
+        <div class="sheet-scrim" id="scrim" onclick="closeSheets()"></div>
+        <div class="sheet" id="spawn-sheet">
+          <div class="grab"></div>
+          <h2>New agent</h2>
+          <div class="field">
+            <label>Workspace</label>
+            <div class="box">~/Work/equip</div>
+          </div>
+          <div class="field">
+            <label>Agent</label>
+            <div class="picks">
+              <button class="pick on">Codex</button>
+              <button class="pick">OpenCode</button>
+              <button class="pick">Claude</button>
+              <button class="pick">Grok</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>First prompt</label>
+            <div class="box" style="color:var(--muted)">Optional — or just open a pane</div>
+          </div>
+          <button class="btn primary" style="width:100%;margin-top:8px" onclick="closeSheets(); go('working')">Start on this PC</button>
+        </div>
+
+        <div class="home-ind"></div>
+      </div>
+      </div>
+    </div>
+
+    <aside class="notes">
+      <h2>Visual intent</h2>
+      <p>A Pixel client for the Herdr runtime on this Omarchy box — not a shrunken SSH TUI, not a vendor chat app. Colors come from the theme that’s on right now.</p>
+      <div class="swatches">
+        <div class="swatch" style="background:var(--bg)"></div>
+        <div class="swatch" style="background:var(--accent)"></div>
+        <div class="swatch" style="background:var(--fg)"></div>
+        <div class="swatch" style="background:var(--green-bright)"></div>
+        <div class="swatch" style="background:var(--raised)"></div>
+      </div>
+      <ul>
+        <li><b>Accent</b> is attention: blocked agents, allow, the thing that needs you.</li>
+        <li><b>Green</b> is structure: live connection, working, the machine is fine.</li>
+        <li>Home is the herd. A session is chat-first. Terminal is a toggle, not the product.</li>
+        <li>Approvals are buttons with the command in monospace — never a raw <code>y/n</code> in a tiny PTY.</li>
+        <li>Palette is <span id="theme-note">your current Omarchy theme</span>. Switch theme, then refresh this tab (or run <code>sync-theme.sh</code>).</li>
+      </ul>
+    </aside>
+  </div>
+
+  <script>
+    const screens = ["herd", "inbox", "session", "working", "terminal"];
+    function go(id) {
+      document.querySelectorAll(".screen").forEach((el) => el.classList.toggle("active", el.id === id));
+      document.querySelectorAll(".thumb").forEach((el) => {
+        el.classList.toggle("active", el.dataset.go === id || (id === "working" && el.dataset.go === "session"));
+      });
+      closeSheets();
+    }
+    function openSheet(id) {
+      document.getElementById("scrim").classList.add("on");
+      document.getElementById(id).classList.add("open");
+    }
+    function closeSheets() {
+      document.getElementById("scrim").classList.remove("on");
+      document.querySelectorAll(".sheet").forEach((el) => el.classList.remove("open"));
+    }
+    document.querySelectorAll(".thumb").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        if (btn.dataset.go === "spawn") openSheet("spawn-sheet");
+        else go(btn.dataset.go);
+      });
+    });
+    document.querySelectorAll(".picks .pick").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        btn.parentElement.querySelectorAll(".pick").forEach((p) => p.classList.remove("on"));
+        btn.classList.add("on");
+      });
+    });
+    function applyFilter(filter) {
+      const cards = document.querySelectorAll("#herd .card");
+      let shown = 0;
+      cards.forEach((card) => {
+        const status = card.dataset.status;
+        const match = filter === "all" || status === filter;
+        card.classList.toggle("is-hidden", !match);
+        if (match) shown += 1;
+      });
+      const meta = document.getElementById("herd-meta");
+      if (meta) {
+        const label = shown === 1 ? "1 agent" : `${shown} agents`;
+        meta.textContent = filter === "all" ? `Omarchy · ${label} live` : `Omarchy · ${label}`;
+      }
+      document.getElementById("filter-empty")?.classList.toggle("show", shown === 0);
+    }
+    document.querySelectorAll(".filters .chip").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        btn.parentElement.querySelectorAll(".chip").forEach((c) => c.classList.remove("on"));
+        btn.classList.add("on");
+        applyFilter(btn.dataset.filter);
+      });
+    });
+    const start = location.hash.replace("#", "");
+    if (start === "spawn") openSheet("spawn-sheet");
+    else if (start) go(start);
+    const themeName = getComputedStyle(document.documentElement).getPropertyValue("--theme-name").replace(/['"]/g, "").trim();
+    if (themeName) {
+      const label = document.getElementById("theme-label");
+      const note = document.getElementById("theme-note");
+      if (label) label.textContent = themeName;
+      if (note) note.textContent = themeName;
+    }
+  </script>
+</body>
+</html>

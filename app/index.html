@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0d11" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Herd" />
+  <title>Herd</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icon.svg" />
+  <link rel="stylesheet" href="/app.css" />
+  <link rel="stylesheet" href="/theme.css" />
+</head>
+<body>
+  <div class="app">
+    <section class="screen active" id="herd">
+      <div class="app-bar">
+        <div class="host">
+          <div class="name" id="host-name">…</div>
+          <div class="meta" id="herd-meta">connecting</div>
+        </div>
+        <button class="icon-btn" id="inbox-btn" title="Needs you">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M2.5 8.5h2.2l1.1 2h4.4l1.1-2h2.2v4.2a1 1 0 0 1-1 1h-10a1 1 0 0 1-1-1V8.5Z" stroke="currentColor" stroke-width="1.3"/>
+            <path d="M3 8.5 8 3.8 13 8.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+          </svg>
+          <span class="badge" id="inbox-badge" hidden>0</span>
+        </button>
+      </div>
+      <div class="filters" role="tablist" aria-label="Filter agents">
+        <button class="chip on" data-filter="all">All</button>
+        <button class="chip" data-filter="blocked">Needs you</button>
+        <button class="chip" data-filter="working">Working</button>
+      </div>
+      <div class="scroll">
+        <p class="empty" id="herd-empty" hidden>No agents yet. Start one from Herdr on the host, or tap New agent.</p>
+        <div id="herd-list"></div>
+        <p class="empty" id="filter-empty" hidden>Nothing in this filter.</p>
+      </div>
+      <div class="herd-footer">
+        <button class="fab" id="fab">＋  New agent</button>
+      </div>
+    </section>
+
+    <section class="screen" id="inbox">
+      <div class="back-row">
+        <button class="ghost" id="back-herd">‹ Herd</button>
+      </div>
+      <div class="app-bar">
+        <div class="host">
+          <div class="name">Needs you</div>
+          <div class="meta" id="inbox-meta"></div>
+        </div>
+      </div>
+      <div class="scroll" id="inbox-list"></div>
+    </section>
+
+    <section class="screen" id="placeholder">
+      <p class="empty pane-hint">Select an agent<br>or start a new one.</p>
+    </section>
+
+    <section class="screen" id="session">
+      <div class="back-row">
+        <button class="ghost" id="back-session">‹ Herd</button>
+        <div class="host" style="flex:1">
+          <div class="name" id="session-name">Agent</div>
+          <div class="meta" id="session-meta"></div>
+        </div>
+        <span class="pip idle" id="session-pip"></span>
+      </div>
+      <div class="seg">
+        <button class="on" data-mode="chat">Chat</button>
+        <button data-mode="term">Terminal</button>
+      </div>
+      <div class="thread" id="session-thread"></div>
+      <pre class="term" id="session-term"></pre>
+      <div class="sticky-need" id="session-need" hidden>
+        <h3>Allow this?</h3>
+        <p id="session-need-text"></p>
+        <div class="row-btns">
+          <button class="btn danger" data-act="deny">Deny</button>
+          <button class="btn quiet" data-act="once">Once</button>
+          <button class="btn primary" data-act="always">Always</button>
+        </div>
+      </div>
+      <div class="working-bar" id="working-bar" hidden>
+        Agent is working
+        <button type="button" id="working-stop">Stop</button>
+      </div>
+      <div class="composer">
+        <textarea id="composer" placeholder="Steer this session…" rows="1"></textarea>
+        <button class="send" id="send" title="Send">↑</button>
+        <button class="send now" id="send-now" title="Send now — interrupt and steer" hidden>Now</button>
+      </div>
+    </section>
+
+    <div class="sheet-scrim" id="scrim"></div>
+    <div class="sheet" id="spawn-sheet">
+      <div class="grab"></div>
+      <h2>New agent</h2>
+      <div class="field">
+        <label>Workspace</label>
+        <input id="spawn-cwd" value="~/Work" />
+      </div>
+      <div class="field">
+        <label>Agent</label>
+        <div class="picks">
+          <button class="pick on" data-kind="codex">Codex</button>
+          <button class="pick" data-kind="opencode">OpenCode</button>
+          <button class="pick" data-kind="claude">Claude</button>
+          <button class="pick" data-kind="grok">Grok</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>First prompt</label>
+        <input id="spawn-prompt" placeholder="Optional — or just open a pane" />
+      </div>
+      <button class="btn primary" id="spawn-go" style="width:100%">Start on this PC</button>
+    </div>
+    <div class="toast" id="toast"></div>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

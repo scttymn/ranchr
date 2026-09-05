@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.png
+theme.css
+app/theme.css
+.DS_Store
