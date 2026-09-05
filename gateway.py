@@ -330,8 +330,7 @@ def read_tty(pane_id: str, status: str) -> str:
         return ""
 
 
-def read_session(pane_id: str, lines: int = 80) -> dict:
-    del lines  # tty depth depends on agent status, not the caller
+def read_session(pane_id: str, include_tty: bool = False) -> dict:
     agents, _snap = agents_from_snapshot()
     agent = next((a for a in agents if a["id"] == pane_id), None)
     if not agent:
@@ -341,7 +340,11 @@ def read_session(pane_id: str, lines: int = 80) -> dict:
     )
     if conv.get("title"):
         agent = {**agent, "title": conv["title"]}
-    text = read_tty(pane_id, agent.get("status") or "")
+    # agent.read of the live pane redraws alt-screen TUIs (scroll jump).
+    # Chat comes from the adapter; only the Terminal tab needs a tty snapshot.
+    text = ""
+    if include_tty:
+        text = read_tty(pane_id, agent.get("status") or "")
     return {
         "agent": agent,
         "text": text,
@@ -574,8 +577,10 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if path.startswith("/api/agents/") and path.endswith("/session"):
             pane_id = unquote(path[len("/api/agents/") : -len("/session")])
+            q = parse_qs(urlparse(self.path).query)
+            include_tty = (q.get("tty") or ["0"])[0] in {"1", "true", "yes"}
             try:
-                self._json(200, read_session(pane_id))
+                self._json(200, read_session(pane_id, include_tty=include_tty))
             except FileNotFoundError:
                 self._err(404, "agent not found")
             except Exception as exc:

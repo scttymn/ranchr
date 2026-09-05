@@ -507,7 +507,8 @@ function transcriptHasReply(messages, userText) {
 async function refreshSession() {
   if (!state.sessionId) return;
   try {
-    const data = await api(`/api/agents/${encodeURIComponent(state.sessionId)}/session`);
+    const tty = state.sessionMode === "term" ? "?tty=1" : "";
+    const data = await api(`/api/agents/${encodeURIComponent(state.sessionId)}/session${tty}`);
     if (state.session && Array.isArray(state.session.messages)) {
       data.messages = mergeMessages(state.session.messages, data.messages);
     }
@@ -690,6 +691,7 @@ function renderChat(data) {
 }
 
 function setSessionMode(mode) {
+  const changed = state.sessionMode !== mode;
   state.sessionMode = mode;
   $$("#session .seg button").forEach((b) =>
     b.classList.toggle("on", b.dataset.mode === mode)
@@ -698,6 +700,7 @@ function setSessionMode(mode) {
   $("#session-term").classList.toggle("on", mode === "term");
   updateJumpLatest();
   if (mode !== "term" && state.chatStick) pinThread();
+  if (changed && mode === "term") refreshSession();
 }
 
 const HERD_COMMANDS = new Set(["/clear", "/reset", "/new", "/cancel", "/stop"]);
