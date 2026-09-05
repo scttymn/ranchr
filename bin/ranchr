@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+"""Ranchr host: tunnel, magic link, notify."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import secrets
+import shutil
+import smtplib
+import socket
+import subprocess
+import sys
+import time
+from email.message import EmailMessage
+from pathlib import Path
+ROOT = Path(__file__).resolve().parent.parent
+PORT = int(os.environ.get("HERD_PORT", "8787"))
+STATE_DIR = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "ranchr"
+CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "ranchr/config.json"
+HOST_PATH = STATE_DIR / "host.json"
+QR_PATH = STATE_DIR / "qr.png"
+DEFAULT_CONFIG = {
+    "notify": "none",
+    "hey_to": "",
+    "smtp_host": "",
+    "smtp_port": 587,
+    "smtp_user": "",
+    "smtp_password": "",
+    "smtp_from": "",
+    "smtp_to": "",
+}
+
+
+def load_json(path: Path, default):
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return default
+
+
+def save_json(path: Path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    tmp.replace(path)
+
+
+def config() -> dict:
+    cfg = dict(DEFAULT_CONFIG)
+    cfg.update(load_json(CONFIG_PATH, {}))
+    return cfg
+
+
+def host_state() -> dict:
+    return load_json(HOST_PATH, {"on": False})
+
+
+def port_open() -> bool:
+    sock = socket.socket()
+    sock.settimeout(0.3)
+    try:
+        sock.connect(("127.0.0.1", PORT))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
+def ensure_gateway() -> None:
+    if port_open():
+        return
+    log = STATE_DIR / "gateway.log"
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    with log.open("ab") as fh:
+        proc = subprocess.Popen(
+            [sys.executable, str(ROOT / "gateway.py")],
+            cwd=str(ROOT),
+            stdout=fh,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    for _ in range(40):
+        if port_open():
+            st = host_state()
+            st["gateway_pid"] = proc.pid
+            save_json(HOST_PATH, st)
+            return
+        time.sleep(0.1)
+    raise SystemExit("gateway did not start on 127.0.0.1:%s" % PORT)
+
+
+def kill_pid(pid: int | None) -> None:
+    if not pid:
+        return
+    try:
+        os.kill(pid, 15)
+    except ProcessLookupError:
+        return
+    for _ in range(20):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.05)
+    try:
+        os.kill(pid, 9)
+    except ProcessLookupError:
+        return
+
+
+def start_tunnel() -> str:
+    if not shutil.which("cloudflared"):
+        raise SystemExit("cloudflared is not installed")
+    proc = subprocess.Popen(
+        [
+            "cloudflared",
+            "tunnel",
+            "--url",
+            f"http://127.0.0.1:{PORT}",
+            "--no-autoupdate",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        start_new_session=True,
+    )
+    url = None
+    deadline = time.time() + 45
+    buf = ""
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            rest = proc.stdout.read() if proc.stdout else ""
+            raise SystemExit("cloudflared exited:\n" + (buf + (rest or ""))[-2000:])
+        line = proc.stdout.readline()
+        if not line:
+            time.sleep(0.05)
+            continue
+        buf += line
+        found = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", line)
+        if found:
+            url = found.group(0)
+            break
+    if not url:
+        kill_pid(proc.pid)
+        raise SystemExit("timed out waiting for trycloudflare URL")
+    return url, proc.pid
+
+
+def write_qr(magic: str) -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    if not shutil.which("qrencode"):
+        return
+    subprocess.check_call(
+        ["qrencode", "-o", str(QR_PATH), "-s", "8", "-m", "2", magic]
+    )
+
+
+def notify(magic: str) -> str | None:
+    cfg = config()
+    mode = (cfg.get("notify") or "none").lower()
+    if mode == "none":
+        return None
+    subject = "Ranchr is up"
+    body = f"Tap to open this ranch:\n\n{magic}\n"
+    if mode == "hey":
+        to = (cfg.get("hey_to") or "").strip()
+        if not to:
+            raise SystemExit("config.hey_to is empty")
+        subprocess.check_call(
+            ["hey", "compose", "--to", to, "--subject", subject, "-m", body]
+        )
+        return f"hey:{to}"
+    if mode == "smtp":
+        to = (cfg.get("smtp_to") or "").strip()
+        host = (cfg.get("smtp_host") or "").strip()
+        if not to or not host:
+            raise SystemExit("smtp_host and smtp_to are required")
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = cfg.get("smtp_from") or cfg.get("smtp_user") or to
+        msg["To"] = to
+        msg.set_content(body)
+        port = int(cfg.get("smtp_port") or 587)
+        user = cfg.get("smtp_user") or ""
+        password = cfg.get("smtp_password") or ""
+        with smtplib.SMTP(host, port, timeout=20) as smtp:
+            smtp.starttls()
+            if user:
+                smtp.login(user, password)
+            smtp.send_message(msg)
+        return f"smtp:{to}"
+    raise SystemExit(f"unknown notify backend: {mode}")
+
+
+def cmd_status() -> int:
+    st = host_state()
+    st["gateway"] = port_open()
+    st["qr"] = str(QR_PATH) if QR_PATH.is_file() else ""
+    st["config"] = config()
+    json.dump(st, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
+def cmd_on() -> int:
+    st = host_state()
+    kill_pid(st.get("tunnel_pid"))
+    ensure_gateway()
+    url, tunnel_pid = start_tunnel()
+    token = secrets.token_urlsafe(24)
+    magic = f"{url}/?t={token}"
+    write_qr(magic)
+    st = {
+        "on": True,
+        "url": url,
+        "token": token,
+        "magic": magic,
+        "tunnel_pid": tunnel_pid,
+        "gateway_pid": host_state().get("gateway_pid"),
+        "error": None,
+        "notified": None,
+    }
+    save_json(HOST_PATH, st)
+    try:
+        st["notified"] = notify(magic)
+        save_json(HOST_PATH, st)
+    except Exception as exc:
+        st["error"] = f"notify failed: {exc}"
+        save_json(HOST_PATH, st)
+    print(json.dumps({"ok": True, "magic": magic, "notified": st.get("notified"), "error": st.get("error")}))
+    return 0
+
+
+def cmd_off() -> int:
+    st = host_state()
+    kill_pid(st.get("tunnel_pid"))
+    if QR_PATH.is_file():
+        QR_PATH.unlink()
+    st.update({"on": False, "url": "", "token": "", "magic": "", "tunnel_pid": None, "error": None})
+    save_json(HOST_PATH, st)
+    print(json.dumps({"ok": True, "on": False}))
+    return 0
+
+
+def cmd_notify() -> int:
+    st = host_state()
+    magic = st.get("magic")
+    if not magic:
+        raise SystemExit("host is off; nothing to send")
+    sent = notify(magic)
+    st["notified"] = sent
+    st["error"] = None
+    save_json(HOST_PATH, st)
+    print(json.dumps({"ok": True, "notified": sent}))
+    return 0
+
+
+def cmd_config(args: list[str]) -> int:
+    cfg = config()
+    if not args:
+        json.dump(cfg, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0
+    if args[0] == "set" and len(args) >= 3:
+        key, value = args[1], " ".join(args[2:])
+        if key not in DEFAULT_CONFIG:
+            raise SystemExit(f"unknown key {key}")
+        if key == "smtp_port":
+            cfg[key] = int(value)
+        else:
+            cfg[key] = value
+        save_json(CONFIG_PATH, cfg)
+        json.dump(cfg, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0
+    raise SystemExit("usage: ranchr config [set KEY VALUE]")
+
+
+def main() -> int:
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print("ranchr host on|off|status|notify")
+        print("ranchr config [set KEY VALUE]")
+        return 0
+    cmd = sys.argv[1]
+    if cmd == "host":
+        sub = sys.argv[2] if len(sys.argv) > 2 else "status"
+        if sub == "on":
+            return cmd_on()
+        if sub == "off":
+            return cmd_off()
+        if sub == "status":
+            return cmd_status()
+        if sub == "notify":
+            return cmd_notify()
+        raise SystemExit("usage: ranchr host on|off|status|notify")
+    if cmd == "config":
+        return cmd_config(sys.argv[2:])
+    if cmd in ("on", "off", "status", "notify"):
+        sys.argv.insert(1, "host")
+        return main()
+    raise SystemExit("unknown command")
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        raise SystemExit(130)

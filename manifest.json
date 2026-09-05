@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "scttymn.ranchr",
+  "name": "Ranchr",
+  "version": "0.1.0",
+  "author": "scttymn",
+  "license": "MIT",
+  "description": "Open a magic-link tunnel to this ranch from the Omarchy bar. QR on the widget; optional HEY or SMTP mail.",
+  "kinds": [
+    "service",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Ranchr",
+    "description": "Toggle the host tunnel, show a QR magic link, and mail it via HEY or SMTP.",
+    "category": "Development",
+    "aliases": [
+      "ranchr",
+      "ranch",
+      "herd"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

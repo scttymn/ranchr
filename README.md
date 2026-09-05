@@ -14,11 +14,30 @@ Remote (login-gated relay) is next. This repo is the local slice.
 
 ## Run
 
+Local only:
+
 ```bash
 ./run.sh
 ```
 
 Open http://127.0.0.1:8787/
+
+Host tunnel (magic link + QR):
+
+```bash
+./bin/ranchr host on     # gateway + trycloudflare URL + QR
+./bin/ranchr host status
+./bin/ranchr host notify # mail via HEY or SMTP if configured
+./bin/ranchr host off
+```
+
+Omarchy widget (toggle, QR, notify settings):
+
+```bash
+omarchy plugin add https://github.com/scttymn/ranchr.git --enable
+```
+
+Notify is **none** (QR only), **hey**, or **smtp**, set in the widget. The mail is the credential: tap `/?t=…` and a cookie is set. No Ranchr password.
 
 Optional:
 

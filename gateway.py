@@ -13,7 +13,7 @@ import uuid
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import adapters
 
@@ -25,6 +25,14 @@ SOCKET_PATH = os.environ.get(
 HOST = os.environ.get("HERD_HOST", "127.0.0.1")
 PORT = int(os.environ.get("HERD_PORT", "8787"))
 CALL_LOCK = threading.Lock()
+HOST_STATE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "ranchr/host.json"
+
+
+def public_token() -> str:
+    try:
+        return str(json.loads(HOST_STATE.read_text()).get("token") or "").strip()
+    except Exception:
+        return ""
 
 KIND_ALIASES = {
     "claude-code": "claude",
@@ -354,9 +362,51 @@ class Handler(SimpleHTTPRequestHandler):
             payload.update(extra)
         self._json(code, payload)
 
+    def _local_host(self) -> bool:
+        host = (self.headers.get("Host") or "").split(":")[0].lower()
+        return host in {"127.0.0.1", "localhost", "::1"}
+
+    def _cookie_token(self) -> str:
+        raw = self.headers.get("Cookie") or ""
+        for part in raw.split(";"):
+            name, _, value = part.strip().partition("=")
+            if name == "ranchr":
+                return value
+        return ""
+
+    def _query_token(self) -> str:
+        return (parse_qs(urlparse(self.path).query).get("t") or [""])[0]
+
+    def _authorized(self) -> bool:
+        if self._local_host():
+            return True
+        tok = public_token()
+        if not tok:
+            return False
+        return self._query_token() == tok or self._cookie_token() == tok
+
+    def _deny(self):
+        body = b"<!doctype html><meta charset=utf-8><title>Ranchr</title><p>This ranch is gated. Open the magic link from the widget or your mail.</p>"
+        self.send_response(401)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        tok = public_token()
+        qtok = self._query_token()
+        if tok and qtok == tok:
+            self.send_response(302)
+            self.send_header("Set-Cookie", f"ranchr={tok}; Path=/; HttpOnly; SameSite=Lax")
+            self.send_header("Location", "/")
+            self.end_headers()
+            return
+        if not self._authorized():
+            self._deny()
+            return
         if path == "/api/health":
             try:
                 info = ping()
@@ -418,6 +468,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
     def do_POST(self):
+        if not self._authorized():
+            self._deny()
+            return
         length = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(length) if length else b"{}"
         try:
