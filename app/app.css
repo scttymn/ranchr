@@ -361,7 +361,8 @@ button, .chip, .pick, .card, .fab {
   background: color-mix(in srgb, var(--accent) 50%, transparent);
 }
 .msg {
-  max-width: 92%;
+  width: fit-content;
+  max-width: min(100%, max(20rem, 88%));
   margin: 10px 0;
   padding: 10px 12px;
   border-radius: 16px;
@@ -1022,8 +1023,5 @@ html[data-device="desktop"] .sheet {
     left: auto;
     right: 24px;
     width: min(360px, 40%);
-  }
-  .msg {
-    max-width: 72%;
   }
 }
