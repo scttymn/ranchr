@@ -554,27 +554,52 @@ def _strip_system_blocks(text: str) -> str:
     return cleaned.strip()
 
 
+def _codex_hook_fields(blob: str) -> list[str]:
+    fields = []
+    for key in ("Event", "Source", "Command", "Mode", "Timeout", "Trust"):
+        match = re.search(rf"(?im)^\s*{key}\s+(.+)$", blob)
+        if match:
+            fields.append(f"{key}: {match.group(1).strip()}")
+    return fields
+
+
 def _parse_codex_hooks(blob: str) -> dict | None:
     low = blob.lower()
-    if "trust all" not in low or "hook" not in low:
+    if "trust" not in low:
         return None
+    if "hook" not in low and "go back" not in low and "trust all" not in low:
+        return None
+    details = _codex_hook_fields(blob)
     match = re.search(r"(\d+)\s+hooks? needs? review", blob, re.I)
-    if match and match.group(1) == "1":
-        prompt = "1 hook needs review before it can run."
-    elif match:
-        prompt = f"{match.group(1)} hooks need review before they can run."
-    else:
-        prompt = "A hook needs review before it can run."
-    return {
-        "kind": "keys",
-        "title": "Hooks",
-        "prompt": prompt,
-        "options": [
-            {"label": "Trust all", "keys": ["t"]},
-            {"label": "Review hooks", "keys": ["enter"]},
-            {"label": "Close", "keys": ["esc"]},
-        ],
-    }
+    if "trust all" in low:
+        if match and match.group(1) == "1":
+            prompt = "1 hook needs review before it can run."
+        elif match:
+            prompt = f"{match.group(1)} hooks need review before they can run."
+        else:
+            prompt = "A hook needs review before it can run."
+        return {
+            "kind": "keys",
+            "title": "Hooks",
+            "prompt": prompt,
+            "options": [
+                {"label": "Trust all", "keys": ["t"]},
+                {"label": "Review hooks", "keys": ["enter"]},
+                {"label": "Close", "keys": ["esc"]},
+            ],
+        }
+    if "go back" in low or re.search(r"\bt to trust\b", low):
+        prompt = "\n".join(details) if details else "Review this hook."
+        return {
+            "kind": "keys",
+            "title": "Hook review",
+            "prompt": prompt,
+            "options": [
+                {"label": "Trust this hook", "keys": ["t"]},
+                {"label": "Back", "keys": ["esc"]},
+            ],
+        }
+    return None
 
 
 def parse_tui_question(text: str) -> dict | None:

@@ -1189,10 +1189,9 @@ async function answerQuestion(opt, text) {
       method: "POST",
       body: JSON.stringify(body),
     });
-    const qel = $("#session-question");
-    if (qel) qel.hidden = true;
     note("Answer sent");
     await refreshSession();
+    setTimeout(() => refreshSession(), 280);
   } catch (err) {
     toast(err.message);
   }

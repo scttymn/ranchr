@@ -357,7 +357,10 @@ def read_session(pane_id: str, include_tty: bool = False) -> dict:
     preview = agent.get("preview") or preview_for(pane_id, agent.get("status") or "")
     agent = {**agent, "preview": preview}
     question = adapters.parse_tui_question(preview)
-    if include_tty or agent.get("status") == "blocked":
+    overlay = bool(question) or (
+        "trust" in preview.lower() and ("hook" in preview.lower() or "go back" in preview.lower())
+    )
+    if include_tty or agent.get("status") == "blocked" or overlay:
         text = read_tty(pane_id, agent.get("status") or "")
         question = adapters.parse_tui_question(text) or question
     return {

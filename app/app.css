@@ -688,6 +688,7 @@ button, .chip, .pick, .card, .fab {
   font-size: 16px;
   color: var(--fg-bright);
   margin-bottom: 10px;
+  white-space: pre-wrap;
 }
 .q-kicker {
   font-size: 11px;
