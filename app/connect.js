@@ -58,6 +58,13 @@
     } catch (e) {}
   }
 
+  var ua = navigator.userAgent || "";
+  var iOS =
+    /iPhone|iPad|iPod/i.test(ua) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  var android = /Android/i.test(ua);
+  document.documentElement.dataset.device = iOS || android ? "phone" : "desktop";
+
   var q = new URLSearchParams(location.search);
   var host = (q.get("host") || "").trim().replace(/\/$/, "");
   var token = (q.get("t") || "").trim();

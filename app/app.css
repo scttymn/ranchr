@@ -812,6 +812,15 @@ button, .chip, .pick, .card, .fab {
   flex-shrink: 0;
   background: var(--bg);
 }
+html[data-device="desktop"] .composer {
+  padding-bottom: 16px;
+}
+html[data-device="desktop"] .herd-footer {
+  padding-bottom: 16px;
+}
+html[data-device="desktop"] .sheet {
+  padding-bottom: 20px;
+}
 .composer textarea {
   flex: 1;
   min-width: 0;
@@ -1016,14 +1025,5 @@ button, .chip, .pick, .card, .fab {
   }
   .msg {
     max-width: 72%;
-  }
-  .composer {
-    padding-bottom: 16px;
-  }
-  .herd-footer {
-    padding-bottom: 16px;
-  }
-  .sheet {
-    padding-bottom: 20px;
   }
 }
