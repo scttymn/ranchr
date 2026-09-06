@@ -28,11 +28,6 @@ html {
 }
 html[data-scheme="light"] { color-scheme: light; }
 html[data-scheme="dark"] { color-scheme: dark; }
-:root {
-  --app-h: 100%;
-  --app-top: 0px;
-  --safe-bottom: max(8px, env(safe-area-inset-bottom, 0px));
-}
 html, body {
   position: fixed;
   inset: 0;
@@ -55,15 +50,14 @@ button, .chip, .pick, .card, .fab {
 }
 
 .app {
-  height: var(--app-h, 100%);
-  max-height: var(--app-h, 100%);
+  height: 100%;
+  max-height: 100%;
   width: 100%;
   min-width: 320px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   position: relative;
-  top: var(--app-top, 0px);
   overflow: hidden;
   background-color: var(--bg);
   color: var(--fg);
@@ -258,7 +252,7 @@ button, .chip, .pick, .card, .fab {
 
 .herd-footer {
   flex-shrink: 0;
-  padding: 12px 16px var(--safe-bottom);
+  padding: 12px 16px 0;
   background: var(--bg);
   border-top: 1px solid var(--hairline);
 }
@@ -813,7 +807,7 @@ button, .chip, .pick, .card, .fab {
 .composer {
   display: flex;
   gap: 8px;
-  padding: 8px 16px var(--safe-bottom);
+  padding: 8px 16px 0;
   align-items: flex-end;
   flex-shrink: 0;
   background: var(--bg);
@@ -868,7 +862,7 @@ button, .chip, .pick, .card, .fab {
   background: linear-gradient(180deg, var(--raised-2), var(--bg-deep));
   border-top: 1px solid var(--hairline);
   border-radius: 28px 28px 0 0;
-  padding: 14px 20px calc(12px + var(--safe-bottom));
+  padding: 14px 20px 12px;
   z-index: 11;
   transform: translateY(110%);
   transition: transform 0.28s ease, visibility 0.28s;
@@ -928,7 +922,7 @@ button, .chip, .pick, .card, .fab {
   position: absolute;
   left: 16px;
   right: 16px;
-  bottom: calc(64px + var(--safe-bottom));
+  bottom: 64px;
   background: var(--raised);
   border: 1px solid var(--hairline);
   color: var(--fg-bright);
