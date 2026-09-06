@@ -122,6 +122,7 @@ const state = {
   ttyAbort: null,
   chatStick: true,
   chatScrolling: false,
+  screenOn: false,
   themeSlug: "",
   themeRev: "",
   themeApplied: false,
@@ -513,6 +514,8 @@ async function openSession(id) {
   state.chatStick = true;
   state.sessionMode = "chat";
   const cached = readSessionCache(id);
+  state.screenOn = !((cached?.messages || []).length);
+  syncScreenBtn();
   if (cached) {
     state.session = cached;
     go("session");
@@ -558,7 +561,7 @@ function transcriptHasReply(messages, userText) {
 async function refreshSession() {
   if (!state.sessionId) return;
   try {
-    const tty = state.sessionMode === "term" ? "?tty=1" : "";
+    const tty = state.sessionMode === "term" || state.screenOn ? "?tty=1" : "";
     const data = await api(`/api/agents/${encodeURIComponent(state.sessionId)}/session${tty}`);
     const wasWorking = (state.session && state.session.agent && state.session.agent.status) === "working";
     if (state.session && Array.isArray(state.session.messages)) {
@@ -596,7 +599,7 @@ async function refreshSession() {
     }
     renderChat(data);
     updateComposerMode();
-    if (state.thinking || a.status === "working") ensureWorkingPoll();
+    if (state.thinking || a.status === "working" || state.screenOn || question) ensureWorkingPoll();
     else stopPoll();
     if (state.sessionMode === "term" && wasWorking && a.status !== "working") loadTermHistory();
   } catch (err) {
@@ -782,6 +785,19 @@ function pinThread() {
   });
 }
 
+function paneHud(data) {
+  const raw = String(data?.text || "").replace(/\s+$/, "");
+  if (!raw) return "";
+  return `<div class="pane-fallback"><pre class="pane-raw">${escapeHtml(raw)}</pre></div>`;
+}
+
+function syncScreenBtn() {
+  const btn = $("#screen-toggle");
+  if (!btn) return;
+  btn.setAttribute("aria-pressed", state.screenOn ? "true" : "false");
+  btn.classList.toggle("on", state.screenOn);
+}
+
 function renderChat(data) {
   const el = threadEl();
   const agentName = data?.agent?.agent || "agent";
@@ -795,14 +811,9 @@ function renderChat(data) {
     }
   }
   const groups = groupChat(messages);
+  const hud = state.screenOn ? paneHud(data) : "";
   if (!groups.length && !notices.length && !state.thinking) {
-    const raw = String(data?.text || "").replace(/\s+$/, "");
-    if (raw) {
-      el.innerHTML = `<div class="pane-fallback"><div class="pane-raw-label">Screen</div><pre class="pane-raw">${escapeHtml(raw)}</pre></div>`;
-    } else {
-      const note = data?.note || "No chat transcript yet.";
-      el.innerHTML = `<p class="empty">${escapeHtml(note)}</p>`;
-    }
+    el.innerHTML = hud || `<p class="empty">${escapeHtml(data?.note || "No chat transcript yet.")}</p>`;
     el._html = "";
     updateJumpLatest();
     return;
@@ -811,6 +822,7 @@ function renderChat(data) {
   let html = notices
     .map((n) => `<div class="msg system">${escapeHtml(n)}</div>`)
     .join("");
+  html += hud;
   html += groups
     .map((g, i) => {
       if (g.role === "user") {
@@ -1287,6 +1299,11 @@ function wire() {
       state.filter = btn.dataset.filter;
       applyFilter();
     });
+  });
+  $("#screen-toggle")?.addEventListener("click", () => {
+    state.screenOn = !state.screenOn;
+    syncScreenBtn();
+    refreshSession();
   });
   $("#back-session").addEventListener("click", () => {
     stopPoll();

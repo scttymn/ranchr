@@ -267,6 +267,28 @@ button, .chip, .pick, .card, .fab {
   background-color: var(--bg);
   border-bottom: 1px solid var(--hairline);
 }
+.screen-btn {
+  appearance: none;
+  -webkit-appearance: none;
+  margin-left: auto;
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--fg-soft);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  min-height: 32px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.screen-btn.on {
+  color: var(--fg-bright);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
 .ghost {
   appearance: none;
   background: transparent;

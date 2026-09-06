@@ -565,12 +565,18 @@ def _codex_hook_fields(blob: str) -> list[str]:
 
 def _parse_codex_hooks(blob: str) -> dict | None:
     low = blob.lower()
-    if "trust" not in low:
-        return None
-    if "hook" not in low and "go back" not in low and "trust all" not in low:
-        return None
     details = _codex_hook_fields(blob)
     match = re.search(r"(\d+)\s+hooks? needs? review", blob, re.I)
+    if "to toggle" in low:
+        return {
+            "kind": "keys",
+            "title": "Hooks",
+            "prompt": "Hook trusted. Continue to start the session.",
+            "options": [
+                {"label": "Continue", "keys": ["esc"]},
+                {"label": "Toggle", "keys": ["space"]},
+            ],
+        }
     if "trust all" in low:
         if match and match.group(1) == "1":
             prompt = "1 hook needs review before it can run."
@@ -588,7 +594,7 @@ def _parse_codex_hooks(blob: str) -> dict | None:
                 {"label": "Close", "keys": ["esc"]},
             ],
         }
-    if "go back" in low or re.search(r"\bt to trust\b", low):
+    if re.search(r"\bt to trust\b", low):
         prompt = "\n".join(details) if details else "Review this hook."
         return {
             "kind": "keys",
