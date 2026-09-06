@@ -433,14 +433,66 @@ button, .chip, .pick, .card, .fab {
 .msg .md h1 { font-size: 17px; }
 .msg .md h2 { font-size: 15px; }
 .msg .md h3 { font-size: 14px; }
+.msg .md h4,
+.msg .md h5,
+.msg .md h6 { font-size: 13px; }
 .msg .md h1:first-child,
 .msg .md h2:first-child,
-.msg .md h3:first-child { margin-top: 0; }
+.msg .md h3:first-child,
+.msg .md h4:first-child,
+.msg .md h5:first-child,
+.msg .md h6:first-child { margin-top: 0; }
 .msg .md blockquote {
   margin: 6px 0;
   padding: 2px 0 2px 10px;
   border-left: 3px solid var(--accent);
   color: var(--fg-soft);
+}
+.msg .md hr {
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  margin: 10px 0;
+}
+.msg .md img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  margin: 8px 0;
+}
+.msg .md .md-table {
+  margin: 8px 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.msg .md table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.msg .md th,
+.msg .md td {
+  border: 1px solid var(--hairline);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.msg .md th {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg-bright);
+  font-weight: 650;
+}
+.msg .md tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+}
+.msg .md li:has(> input[type="checkbox"]) {
+  list-style: none;
+  margin-left: -1.15em;
+}
+.msg .md input[type="checkbox"] {
+  margin-right: 6px;
+  accent-color: var(--accent);
+  pointer-events: none;
 }
 .work-toggle {
   display: inline-flex;

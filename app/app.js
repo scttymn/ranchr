@@ -584,197 +584,122 @@ function groupChat(messages) {
   return groups;
 }
 
-const MD_HOLD = [];
-const MD_MARK = "\uE000";
-
-function mdHold(html, block) {
-  MD_HOLD.push(html);
-  return `${MD_MARK}${block ? "B" : "I"}${MD_HOLD.length - 1}${MD_MARK}`;
-}
-
-function mdRestore(s) {
-  return s.replace(/\uE000[BI](\d+)\uE000/g, (_, i) => MD_HOLD[Number(i)] || "");
-}
-
 function safeHref(raw) {
   let href = String(raw || "").trim();
   if (/^www\./i.test(href)) href = "https://" + href;
   try {
     const u = new URL(href);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return "";
+    if (u.protocol !== "http:" && u.protocol !== "https:" && u.protocol !== "mailto:") {
+      return "";
+    }
     return u.href;
   } catch {
     return "";
   }
 }
 
-function peelUrl(token) {
-  let url = token;
-  let after = "";
-  const trimEnd = () => {
-    while (url.length && /[.,;:!?*_~]+$/.test(url)) {
-      after = url.slice(-1) + after;
-      url = url.slice(0, -1);
-    }
-    const opens = (url.match(/\(/g) || []).length;
-    const closes = (url.match(/\)/g) || []).length;
-    if (closes > opens && url.endsWith(")")) {
-      after = ")" + after;
-      url = url.slice(0, -1);
-      return true;
-    }
-    return false;
-  };
-  while (trimEnd()) {}
-  return [url, after];
-}
+const MD_TAGS = [
+  "p",
+  "br",
+  "strong",
+  "b",
+  "em",
+  "i",
+  "del",
+  "s",
+  "code",
+  "pre",
+  "a",
+  "ul",
+  "ol",
+  "li",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "blockquote",
+  "table",
+  "thead",
+  "tbody",
+  "tr",
+  "th",
+  "td",
+  "hr",
+  "img",
+  "input",
+];
+const MD_ATTR = [
+  "href",
+  "src",
+  "alt",
+  "title",
+  "class",
+  "target",
+  "rel",
+  "colspan",
+  "rowspan",
+  "align",
+  "type",
+  "checked",
+  "disabled",
+  "start",
+  "data-md-link",
+];
 
-function mdAnchor(href, label) {
-  const url = safeHref(href);
-  if (!url) return label;
-  return mdHold(
-    `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" data-md-link="1">${escapeHtml(label)}</a>`
-  );
-}
+let mdReady = false;
 
-function takeMdLinks(s) {
-  let out = "";
-  let i = 0;
-  while (i < s.length) {
-    const open = s.indexOf("[", i);
-    if (open < 0) {
-      out += s.slice(i);
-      break;
-    }
-    const mid = s.indexOf("](", open);
-    if (mid < 0 || mid === open + 1) {
-      out += s.slice(i, open + 1);
-      i = open + 1;
-      continue;
-    }
-    const label = s.slice(open + 1, mid);
-    if (!label || label.includes("[") || label.includes("\n")) {
-      out += s.slice(i, open + 1);
-      i = open + 1;
-      continue;
-    }
-    let j = mid + 2;
-    let depth = 1;
-    while (j < s.length && depth > 0) {
-      const c = s[j];
-      if (c === "(") depth += 1;
-      else if (c === ")") depth -= 1;
-      else if (c === "\n") break;
-      j += 1;
-    }
-    if (depth !== 0) {
-      out += s.slice(i, open + 1);
-      i = open + 1;
-      continue;
-    }
-    const url = s.slice(mid + 2, j - 1).trim();
-    out += s.slice(i, open) + mdAnchor(url, label);
-    i = j;
-  }
-  return out;
-}
-
-function mdBlockStart(line) {
-  return (
-    /^\uE000B\d+\uE000$/.test(line) ||
-    /^[\t ]*[-*] /.test(line) ||
-    /^[\t ]*\d+\. /.test(line) ||
-    /^#{1,3} /.test(line) ||
-    /^&gt; /.test(line) ||
-    line === "&gt;"
-  );
-}
-
-function formatMdBlocks(s) {
-  const lines = s.split("\n");
-  const chunks = [];
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i];
-    if (/^\uE000B\d+\uE000$/.test(line)) {
-      chunks.push(line);
-      i += 1;
-      continue;
-    }
-    if (/^[\t ]*[-*] /.test(line)) {
-      const items = [];
-      while (i < lines.length && /^[\t ]*[-*] /.test(lines[i])) {
-        items.push(`<li>${lines[i].replace(/^[\t ]*[-*] /, "")}</li>`);
-        i += 1;
+function ensureMarkdown() {
+  if (mdReady) return;
+  const marked = window.marked;
+  const purify = window.DOMPurify;
+  if (!marked || !purify) return;
+  marked.use({ gfm: true, breaks: true });
+  purify.addHook("afterSanitizeAttributes", (node) => {
+    if (node.tagName === "A") {
+      const href = safeHref(node.getAttribute("href") || "");
+      if (!href) {
+        node.replaceWith(node.ownerDocument.createTextNode(node.textContent || ""));
+        return;
       }
-      chunks.push(`<ul>${items.join("")}</ul>`);
-      continue;
+      node.setAttribute("href", href);
+      node.setAttribute("target", "_blank");
+      node.setAttribute("rel", "noopener noreferrer");
+      node.setAttribute("data-md-link", "1");
     }
-    if (/^[\t ]*\d+\. /.test(line)) {
-      const items = [];
-      while (i < lines.length && /^[\t ]*\d+\. /.test(lines[i])) {
-        items.push(`<li>${lines[i].replace(/^[\t ]*\d+\. /, "")}</li>`);
-        i += 1;
+    if (node.tagName === "IMG") {
+      const src = safeHref(node.getAttribute("src") || "");
+      if (!src) node.remove();
+      else node.setAttribute("src", src);
+    }
+    if (node.tagName === "INPUT") {
+      if ((node.getAttribute("type") || "").toLowerCase() !== "checkbox") {
+        node.remove();
+      } else {
+        node.setAttribute("disabled", "");
       }
-      chunks.push(`<ol>${items.join("")}</ol>`);
-      continue;
     }
-    if (/^#{1,3} /.test(line)) {
-      const n = line.match(/^(#{1,3}) /)[1].length;
-      chunks.push(`<h${n}>${line.replace(/^#{1,3} /, "")}</h${n}>`);
-      i += 1;
-      continue;
-    }
-    if (/^&gt; /.test(line) || line === "&gt;") {
-      const qs = [];
-      while (i < lines.length && (/^&gt; /.test(lines[i]) || lines[i] === "&gt;")) {
-        qs.push(lines[i].replace(/^&gt; ?/, ""));
-        i += 1;
-      }
-      chunks.push(`<blockquote>${qs.join("<br>")}</blockquote>`);
-      continue;
-    }
-    if (line === "") {
-      i += 1;
-      continue;
-    }
-    const para = [];
-    while (i < lines.length && lines[i] !== "" && !mdBlockStart(lines[i])) {
-      para.push(lines[i]);
-      i += 1;
-    }
-    chunks.push(`<p>${para.join("<br>")}</p>`);
-  }
-  return chunks.join("");
+  });
+  mdReady = true;
 }
 
 function formatChat(text) {
-  MD_HOLD.length = 0;
-  let s = String(text ?? "").replace(/\r\n/g, "\n");
-  s = s.replace(/```[^\n`]*\n?([\s\S]*?)```/g, (_, code) =>
-    mdHold(`<pre><code>${escapeHtml(code.replace(/\n$/, ""))}</code></pre>`, true)
-  );
-  s = s.replace(/`([^`\n]+)`/g, (_, code) => mdHold(`<code>${escapeHtml(code)}</code>`));
-  s = takeMdLinks(s);
-  s = s.replace(/\bhttps?:\/\/[^\s<]+/gi, (raw) => {
-    const [url, after] = peelUrl(raw);
-    if (!safeHref(url)) return raw;
-    return mdAnchor(url, url) + after;
+  const src = String(text ?? "");
+  if (!src) return "";
+  ensureMarkdown();
+  const marked = window.marked;
+  const purify = window.DOMPurify;
+  if (!marked || !purify) {
+    return `<p>${escapeHtml(src).replace(/\n/g, "<br>")}</p>`;
+  }
+  const raw = marked.parse(src, { async: false });
+  const html = purify.sanitize(String(raw), {
+    ALLOWED_TAGS: MD_TAGS,
+    ALLOWED_ATTR: MD_ATTR,
+    ALLOW_DATA_ATTR: false,
   });
-  s = s.replace(/(^|[\s(])www\.[^\s<]+/gi, (raw, lead) => {
-    const prefix = lead || "";
-    const rest = prefix ? raw.slice(prefix.length) : raw;
-    const [url, after] = peelUrl(rest);
-    if (!safeHref(url)) return raw;
-    return prefix + mdAnchor(url, url) + after;
-  });
-  s = escapeHtml(s);
-  s = s.replace(/\*\*\*([\s\S]+?)\*\*\*/g, "<strong><em>$1</em></strong>");
-  s = s.replace(/\*\*([\s\S]+?)\*\*/g, "<strong>$1</strong>");
-  s = s.replace(/__([\s\S]+?)__/g, "<strong>$1</strong>");
-  s = s.replace(/~~([\s\S]+?)~~/g, "<del>$1</del>");
-  s = s.replace(/(^|[^\*])\*(\S(?:[^*\n]*?\S)?)\*(?!\*)/g, "$1<em>$2</em>");
-  return mdRestore(formatMdBlocks(s));
+  return html.replace(/<table[\s\S]*?<\/table>/gi, (table) => `<div class="md-table">${table}</div>`);
 }
 
 const CHAT_BOTTOM_PX = 80;
