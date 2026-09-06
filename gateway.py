@@ -362,6 +362,7 @@ def read_session(pane_id: str, include_tty: bool = False) -> dict:
         "text": text,
         "messages": conv.get("messages") or [],
         "adapter": conv.get("adapter"),
+        "session_id": conv.get("session_id"),
         "note": conv.get("note"),
         "question": question,
     }

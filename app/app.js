@@ -467,6 +467,7 @@ function writeSessionCache(id, data) {
         messages: (data.messages || []).slice(-200),
         agent: data.agent || null,
         adapter: data.adapter || null,
+        session_id: data.session_id || null,
         text: data.text || "",
         note: data.note || null,
         skip,
@@ -487,7 +488,11 @@ function applySessionHeader(data) {
   pip.className = `pip ${a.status || "idle"}`;
 }
 
-function mergeMessages(cached, incoming) {
+function mergeMessages(cached, incoming, live) {
+  if (live && live.adapter) return incoming || [];
+  if (live && live.session_id && cached && live.session_id !== cached.session_id) {
+    return incoming || [];
+  }
   if (!incoming || !incoming.length) return cached || [];
   if (!cached || !cached.length) return incoming;
   const n = Math.min(cached.length, incoming.length);
@@ -557,7 +562,10 @@ async function refreshSession() {
     const data = await api(`/api/agents/${encodeURIComponent(state.sessionId)}/session${tty}`);
     const wasWorking = (state.session && state.session.agent && state.session.agent.status) === "working";
     if (state.session && Array.isArray(state.session.messages)) {
-      data.messages = mergeMessages(state.session.messages, data.messages);
+      data.messages = mergeMessages(state.session.messages, data.messages, {
+        adapter: data.adapter,
+        session_id: data.session_id,
+      });
     }
     state.session = data;
     writeSessionCache(state.sessionId, data);
