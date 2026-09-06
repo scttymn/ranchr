@@ -30,11 +30,10 @@ Host tunnel (magic link + QR):
 ```bash
 ./bin/ranchr host on     # gateway + trycloudflare URL + QR
 ./bin/ranchr host status
-./bin/ranchr host notify # mail via HEY or SMTP if configured
 ./bin/ranchr host off
 ```
 
-The magic link is `https://scttymn.github.io/ranchr/?host=<tunnel>&t=<token>`. The token is the credential. Scan the QR or tap the mail; the PWA stores the ranch and does not need a password.
+The magic link is `https://scttymn.github.io/ranchr/?host=<tunnel>&t=<token>`. The token is the credential. Scan the QR; the PWA stores the ranch and does not need a password.
 
 Override the app URL if you fork:
 
@@ -42,15 +41,13 @@ Override the app URL if you fork:
 ./bin/ranchr config set app_url https://you.github.io/ranchr
 ```
 
-Omarchy widget (toggle, QR, notify settings):
+Omarchy widget (toggle + QR):
 
 ```bash
 omarchy plugin add https://github.com/scttymn/ranchr.git --enable
 ```
 
 The first time the widget loads, it checks for **cloudflared** and **qrencode**. If either is missing, the panel opens and offers **Install missing tools…**, which runs `omarchy pkg add cloudflared qrencode` in a floating terminal.
-
-Notify is **none** (QR only), **hey**, or **smtp**, set in the widget. The mail is the credential: tap `/?t=…` and a cookie is set. No Ranchr password.
 
 Optional:
 

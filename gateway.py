@@ -683,7 +683,7 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path.startswith("/api/"):
             self._err(401, "gated")
             return
-        body = b"<!doctype html><meta charset=utf-8><title>Ranchr</title><p>This ranch is gated. Open the magic link from the widget or your mail.</p>"
+        body = b"<!doctype html><meta charset=utf-8><title>Ranchr</title><p>This ranch is gated. Open the magic link from the widget.</p>"
         self.send_response(401)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))

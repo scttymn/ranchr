@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ranchr host: tunnel, magic link, notify."""
+"""Ranchr host: tunnel and magic-link QR."""
 
 from __future__ import annotations
 
@@ -8,12 +8,10 @@ import os
 import re
 import secrets
 import shutil
-import smtplib
 import socket
 import subprocess
 import sys
 import time
-from email.message import EmailMessage
 from pathlib import Path
 from urllib.parse import urlencode
 ROOT = Path(__file__).resolve().parent.parent
@@ -23,14 +21,6 @@ CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) /
 HOST_PATH = STATE_DIR / "host.json"
 QR_PATH = STATE_DIR / "qr.png"
 DEFAULT_CONFIG = {
-    "notify": "none",
-    "hey_to": "",
-    "smtp_host": "",
-    "smtp_port": 587,
-    "smtp_user": "",
-    "smtp_password": "",
-    "smtp_from": "",
-    "smtp_to": "",
     "app_url": "https://scttymn.github.io/ranchr",
 }
 
@@ -187,43 +177,6 @@ def write_qr(magic: str) -> None:
     )
 
 
-def notify(magic: str) -> str | None:
-    cfg = config()
-    mode = (cfg.get("notify") or "none").lower()
-    if mode == "none":
-        return None
-    subject = "Ranchr is up"
-    body = f"Tap to open this ranch:\n\n{magic}\n"
-    if mode == "hey":
-        to = (cfg.get("hey_to") or "").strip()
-        if not to:
-            raise SystemExit("config.hey_to is empty")
-        subprocess.check_call(
-            ["hey", "compose", "--to", to, "--subject", subject, "-m", body]
-        )
-        return f"hey:{to}"
-    if mode == "smtp":
-        to = (cfg.get("smtp_to") or "").strip()
-        host = (cfg.get("smtp_host") or "").strip()
-        if not to or not host:
-            raise SystemExit("smtp_host and smtp_to are required")
-        msg = EmailMessage()
-        msg["Subject"] = subject
-        msg["From"] = cfg.get("smtp_from") or cfg.get("smtp_user") or to
-        msg["To"] = to
-        msg.set_content(body)
-        port = int(cfg.get("smtp_port") or 587)
-        user = cfg.get("smtp_user") or ""
-        password = cfg.get("smtp_password") or ""
-        with smtplib.SMTP(host, port, timeout=20) as smtp:
-            smtp.starttls()
-            if user:
-                smtp.login(user, password)
-            smtp.send_message(msg)
-        return f"smtp:{to}"
-    raise SystemExit(f"unknown notify backend: {mode}")
-
-
 def cmd_status() -> int:
     st = host_state()
     st["gateway"] = port_open()
@@ -259,16 +212,9 @@ def cmd_on() -> int:
         "tunnel_pid": tunnel_pid,
         "gateway_pid": host_state().get("gateway_pid"),
         "error": None,
-        "notified": None,
     }
     save_json(HOST_PATH, st)
-    try:
-        st["notified"] = notify(magic)
-        save_json(HOST_PATH, st)
-    except Exception as exc:
-        st["error"] = f"notify failed: {exc}"
-        save_json(HOST_PATH, st)
-    print(json.dumps({"ok": True, "magic": magic, "notified": st.get("notified"), "error": st.get("error")}))
+    print(json.dumps({"ok": True, "magic": magic, "error": st.get("error")}))
     return 0
 
 
@@ -283,19 +229,6 @@ def cmd_off() -> int:
     return 0
 
 
-def cmd_notify() -> int:
-    st = host_state()
-    magic = st.get("magic")
-    if not magic:
-        raise SystemExit("host is off; nothing to send")
-    sent = notify(magic)
-    st["notified"] = sent
-    st["error"] = None
-    save_json(HOST_PATH, st)
-    print(json.dumps({"ok": True, "notified": sent}))
-    return 0
-
-
 def cmd_config(args: list[str]) -> int:
     cfg = config()
     if not args:
@@ -306,10 +239,7 @@ def cmd_config(args: list[str]) -> int:
         key, value = args[1], " ".join(args[2:])
         if key not in DEFAULT_CONFIG:
             raise SystemExit(f"unknown key {key}")
-        if key == "smtp_port":
-            cfg[key] = int(value)
-        else:
-            cfg[key] = value
+        cfg[key] = value
         save_json(CONFIG_PATH, cfg)
         json.dump(cfg, sys.stdout, indent=2)
         sys.stdout.write("\n")
@@ -341,7 +271,7 @@ def cmd_deps(args: list[str]) -> int:
 
 def main() -> int:
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
-        print("ranchr host on|off|status|notify")
+        print("ranchr host on|off|status")
         print("ranchr config [set KEY VALUE]")
         print("ranchr deps [install]")
         return 0
@@ -354,14 +284,12 @@ def main() -> int:
             return cmd_off()
         if sub == "status":
             return cmd_status()
-        if sub == "notify":
-            return cmd_notify()
-        raise SystemExit("usage: ranchr host on|off|status|notify")
+        raise SystemExit("usage: ranchr host on|off|status")
     if cmd == "config":
         return cmd_config(sys.argv[2:])
     if cmd == "deps":
         return cmd_deps(sys.argv[2:])
-    if cmd in ("on", "off", "status", "notify"):
+    if cmd in ("on", "off", "status"):
         sys.argv.insert(1, "host")
         return main()
     raise SystemExit("unknown command")

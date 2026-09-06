@@ -178,18 +178,9 @@ Panel {
             opacity: service.error !== "" ? 1.0 : 0.7
             text: service.error !== ""
               ? service.error
-              : (service.notified
-                  ? "Mailed: " + service.notified
-                  : (service.on ? "Scan the QR with your phone." : "Turn the switch on to mint a magic link."))
+              : (service.on ? "Scan the QR with your phone." : "Turn the switch on to mint a magic link.")
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
-          }
-
-          Button {
-            text: "Resend mail"
-            visible: !service.needsSetup && service.on && service.notify !== "none"
-            enabled: !service.busy
-            onClicked: service.resend()
           }
 
           Image {
@@ -209,94 +200,6 @@ Panel {
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
-          }
-
-          PanelSeparator {
-            visible: !service.needsSetup
-            width: parent.width
-          }
-
-          PanelSectionHeader {
-            visible: !service.needsSetup
-            width: parent.width
-            text: "Notify"
-          }
-
-          ButtonGroup {
-            visible: !service.needsSetup
-            width: parent.width
-            value: service.notify
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-            fontSize: Style.font.caption
-            focusable: false
-            options: [
-              { value: "none", label: "None" },
-              { value: "hey", label: "HEY" },
-              { value: "smtp", label: "SMTP" }
-            ]
-            onChanged: function (v) { service.setConfig("notify", v) }
-          }
-
-          Column {
-            visible: !service.needsSetup && service.notify === "hey"
-            width: parent.width
-            spacing: Style.space(6)
-            Text {
-              text: "HEY to"
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-            }
-            TextField {
-              width: parent.width
-              text: service.heyTo
-              placeholderText: "you@hey.com"
-              onEditingFinished: service.setConfig("hey_to", text)
-            }
-          }
-
-          Column {
-            visible: !service.needsSetup && service.notify === "smtp"
-            width: parent.width
-            spacing: Style.space(6)
-            TextField {
-              width: parent.width
-              text: service.smtpHost
-              placeholderText: "SMTP host"
-              onEditingFinished: service.setConfig("smtp_host", text)
-            }
-            TextField {
-              width: parent.width
-              text: service.smtpPort
-              placeholderText: "587"
-              onEditingFinished: service.setConfig("smtp_port", text)
-            }
-            TextField {
-              width: parent.width
-              text: service.smtpUser
-              placeholderText: "SMTP user"
-              onEditingFinished: service.setConfig("smtp_user", text)
-            }
-            TextField {
-              width: parent.width
-              password: true
-              text: service.smtpPassword
-              placeholderText: "SMTP password"
-              onEditingFinished: service.setConfig("smtp_password", text)
-            }
-            TextField {
-              width: parent.width
-              text: service.smtpFrom
-              placeholderText: "From"
-              onEditingFinished: service.setConfig("smtp_from", text)
-            }
-            TextField {
-              width: parent.width
-              text: service.smtpTo
-              placeholderText: "To"
-              onEditingFinished: service.setConfig("smtp_to", text)
-            }
           }
         }
       }

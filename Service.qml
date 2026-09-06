@@ -21,15 +21,6 @@ Item {
   property string magic: ""
   property string qr: ""
   property string error: ""
-  property string notified: ""
-  property string notify: "none"
-  property string heyTo: ""
-  property string smtpHost: ""
-  property string smtpPort: "587"
-  property string smtpUser: ""
-  property string smtpPassword: ""
-  property string smtpFrom: ""
-  property string smtpTo: ""
   property bool busy: false
   property bool probed: false
   property bool hasCloudflared: false
@@ -48,15 +39,6 @@ Item {
     onLoaded: root.applyHost(text())
   }
 
-  FileView {
-    id: configFile
-    path: (Quickshell.env("XDG_CONFIG_HOME") || root.home + "/.config") + "/ranchr/config.json"
-    watchChanges: true
-    printErrors: false
-    onFileChanged: reload()
-    onLoaded: root.applyConfig(text())
-  }
-
   function applyHost(raw) {
     try {
       var data = JSON.parse(raw || "{}")
@@ -65,24 +47,9 @@ Item {
       root.magic = data.magic || ""
       root.qr = data.on ? (root.stateDir + "/qr.png#" + Date.now()) : ""
       root.error = data.error || ""
-      root.notified = data.notified || ""
     } catch (e) {
       root.error = String(e)
     }
-  }
-
-  function applyConfig(raw) {
-    try {
-      var data = JSON.parse(raw || "{}")
-      root.notify = data.notify || "none"
-      root.heyTo = data.hey_to || ""
-      root.smtpHost = data.smtp_host || ""
-      root.smtpPort = String(data.smtp_port || 587)
-      root.smtpUser = data.smtp_user || ""
-      root.smtpPassword = data.smtp_password || ""
-      root.smtpFrom = data.smtp_from || ""
-      root.smtpTo = data.smtp_to || ""
-    } catch (e) {}
   }
 
   Process {
@@ -90,7 +57,6 @@ Item {
     onExited: function () {
       root.busy = false
       hostFile.reload()
-      configFile.reload()
     }
   }
 
@@ -146,13 +112,5 @@ Item {
 
   function toggle() {
     run(root.on ? ["host", "off"] : ["host", "on"])
-  }
-
-  function resend() {
-    run(["host", "notify"])
-  }
-
-  function setConfig(key, value) {
-    run(["config", "set", key, value])
   }
 }

@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "author": "scttymn",
   "license": "MIT",
-  "description": "Open a magic-link tunnel to this ranch from the Omarchy bar. QR on the widget; optional HEY or SMTP mail.",
+  "description": "Open a magic-link tunnel to this ranch from the Omarchy bar. Scan the QR on the widget.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Ranchr",
-    "description": "Toggle the host tunnel, show a QR magic link, and mail it via HEY or SMTP.",
+    "description": "Toggle the host tunnel and show a QR magic link.",
     "category": "Development",
     "aliases": [
       "ranchr",
