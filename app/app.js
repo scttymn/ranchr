@@ -1217,6 +1217,31 @@ async function loadHerd() {
   }
 }
 
+const IOS_TAB_BAR = 49;
+
+function readSafeBottom() {
+  const probe = document.createElement("div");
+  probe.style.cssText =
+    "position:absolute;visibility:hidden;pointer-events:none;padding-bottom:env(safe-area-inset-bottom,0px)";
+  document.body.appendChild(probe);
+  const value = parseFloat(getComputedStyle(probe).paddingBottom) || 0;
+  probe.remove();
+  return value;
+}
+
+function syncViewport() {
+  const root = document.documentElement;
+  const vv = window.visualViewport;
+  const height = Math.round(vv ? vv.height : window.innerHeight);
+  const top = Math.round(vv ? vv.offsetTop : 0);
+  root.style.setProperty("--app-h", `${height}px`);
+  root.style.setProperty("--app-top", `${top}px`);
+  const below = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+  let pad = Math.max(0, readSafeBottom() - below);
+  if (below < 8 && pad >= IOS_TAB_BAR) pad -= IOS_TAB_BAR;
+  root.style.setProperty("--safe-bottom", `${Math.max(8, Math.round(pad))}px`);
+}
+
 function wire() {
   $$(".filters .chip").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1245,9 +1270,16 @@ function wire() {
     growComposer($("#composer"));
     if (state.chatStick && state.screen === "session") pinThread();
   });
-  window.addEventListener("resize", () => {
+  const onFrame = () => {
+    syncViewport();
     if (state.chatStick && state.screen === "session") pinThread();
-  });
+  };
+  window.addEventListener("resize", onFrame);
+  window.addEventListener("orientationchange", () => setTimeout(onFrame, 250));
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", onFrame);
+    window.visualViewport.addEventListener("scroll", onFrame);
+  }
   $("#composer").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -1335,6 +1367,7 @@ function live() {
   pump();
 }
 
+syncViewport();
 wire();
 loadHerd().then(() => {
   const hash = location.hash.replace("#", "");
