@@ -690,13 +690,20 @@ def _parse_numbered_menu(blob: str) -> dict | None:
     while lines and (not lines[-1].strip() or _looks_like_legend(lines[-1])):
         lines.pop()
     found: list[tuple[int, bool, str]] = []
+    wrapped: list[str] = []
     while lines:
         ln = lines[-1]
-        marked = re.match(r"^\s*(?:>|❯)?\s*(\d+)\.\s+(\S.*)$", ln)
+        marked = re.match(r"^\s*(?:[>›❯])?\s*(\d+)\.\s+(\S.*)$", ln)
         if marked:
-            found.append(
-                (int(marked.group(1)), bool(re.match(r"^\s*(?:>|❯)", ln)), marked.group(2).strip())
-            )
+            rest = marked.group(2).strip()
+            if wrapped:
+                rest = (rest + " " + " ".join(reversed(wrapped))).strip()
+                wrapped = []
+            found.append((int(marked.group(1)), bool(re.match(r"^\s*[>›❯]", ln)), rest))
+            lines.pop()
+            continue
+        if re.match(r"^\s{8,}\S", ln):
+            wrapped.append(ln.strip())
             lines.pop()
             continue
         if not ln.strip():
