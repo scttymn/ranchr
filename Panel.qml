@@ -192,14 +192,23 @@ Panel {
             cache: false
           }
 
-          Text {
+          MouseArea {
             visible: !service.needsSetup && service.on && service.magic !== ""
             width: parent.width
-            wrapMode: Text.WrapAnywhere
-            text: service.magic
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
+            height: magicLink.implicitHeight
+            cursorShape: Qt.PointingHandCursor
+            hoverEnabled: true
+            onClicked: Qt.openUrlExternally(service.magic)
+            Text {
+              id: magicLink
+              width: parent.width
+              wrapMode: Text.WrapAnywhere
+              text: service.magic
+              color: parent.containsMouse ? root.foreground : Color.accent
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              font.underline: true
+            }
           }
         }
       }
