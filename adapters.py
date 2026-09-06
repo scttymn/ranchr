@@ -635,18 +635,24 @@ def _title_case_action(text: str) -> str:
     return label[0].upper() + label[1:]
 
 
+def _looks_like_legend(line: str) -> bool:
+    low = (line or "").strip().lower()
+    if " to " not in low:
+        return False
+    return (
+        low.startswith("press ")
+        or "esc to " in low
+        or "enter to " in low
+        or bool(re.search(r"\b[a-z] to ", low))
+    )
+
+
 def _parse_key_legend(blob: str) -> dict | None:
     """Turn a TUI footer like 'Press t to trust; esc to close' into buttons."""
     lines = [ln.strip() for ln in blob.splitlines() if ln.strip()]
     legend = ""
     for ln in reversed(lines):
-        low = ln.lower()
-        if " to " in low and (
-            low.startswith("press ")
-            or "esc to " in low
-            or "enter to " in low
-            or re.search(r"\b[a-z] to ", low)
-        ):
+        if _looks_like_legend(ln):
             legend = ln
             break
     if not legend:
@@ -654,20 +660,19 @@ def _parse_key_legend(blob: str) -> dict | None:
     body = re.sub(r"(?i)^press\s+", "", legend).strip()
     options = []
     seen = set()
-    for part in [p.strip() for p in re.split(r"[;|]", body) if p.strip()]:
-        matched = re.match(
-            r"(?i)^(space|enter|return|esc|escape|tab|backspace|[a-z0-9])"
-            r"(?:\s+or\s+(space|enter|esc|escape|[a-z0-9]))?"
-            r"\s+to\s+(.+)$",
-            part,
-        )
-        if not matched:
-            continue
+    clause = re.compile(
+        r"(?i)(space|enter|return|esc|escape|tab|backspace|[a-z0-9])"
+        r"(?:\s+or\s+(?:space|enter|esc|escape|[a-z0-9]))*"
+        r"\s+to\s+"
+        r"(.+?)"
+        r"(?=\s+or\s+(?:space|enter|return|esc|escape|tab|backspace|[a-z0-9])\s+to\b|\s*[;|]|$)"
+    )
+    for matched in clause.finditer(body):
         key = _legend_key(matched.group(1))
         if not key or key in seen:
             continue
         seen.add(key)
-        label = _title_case_action(matched.group(3))
+        label = _title_case_action(matched.group(2))
         options.append({"label": label or key, "keys": [key]})
     if not options:
         return None
@@ -679,15 +684,87 @@ def _parse_key_legend(blob: str) -> dict | None:
     }
 
 
+def _parse_numbered_menu(blob: str) -> dict | None:
+    """Numbered TUI menus such as Codex /model."""
+    lines = [ln.rstrip() for ln in blob.splitlines()]
+    while lines and (not lines[-1].strip() or _looks_like_legend(lines[-1])):
+        lines.pop()
+    found: list[tuple[int, bool, str]] = []
+    while lines:
+        ln = lines[-1]
+        marked = re.match(r"^\s*(?:>|❯)?\s*(\d+)\.\s+(\S.*)$", ln)
+        if marked:
+            found.append(
+                (int(marked.group(1)), bool(re.match(r"^\s*(?:>|❯)", ln)), marked.group(2).strip())
+            )
+            lines.pop()
+            continue
+        if not ln.strip():
+            lines.pop()
+            continue
+        break
+    found.reverse()
+    if len(found) < 2:
+        return None
+    nums = [item[0] for item in found]
+    if nums != list(range(nums[0], nums[0] + len(nums))):
+        return None
+    above = []
+    for ln in reversed(lines):
+        if not ln.strip():
+            if above:
+                break
+            continue
+        if _looks_like_legend(ln):
+            continue
+        above.append(ln.strip())
+        if len(above) >= 2:
+            break
+    above.reverse()
+    title = above[0] if above and len(above[0]) < 80 else ""
+    prompt = above[1] if len(above) > 1 else ""
+    if title and len(title) > 70:
+        prompt = title
+        title = ""
+    options = []
+    cursor = found[0][0]
+    for n, on, rest in found:
+        if on:
+            cursor = n
+        parts = re.split(r"\s{2,}", rest, maxsplit=1)
+        options.append({
+            "n": n,
+            "label": parts[0].strip(),
+            "description": parts[1].strip() if len(parts) > 1 else "",
+        })
+    return {
+        "kind": "choice",
+        "title": title,
+        "prompt": prompt,
+        "cursor": cursor,
+        "options": options,
+    }
+
+
 def parse_tui_question(text: str) -> dict | None:
     """Pull a TUI poll (Codex hooks, Claude AskUserQuestion, etc.) out of pane text."""
     if not text:
         return None
     blob = text.replace("\r", "")
+    numbered = _parse_numbered_menu(blob)
+    legend = _parse_key_legend(blob)
+    if numbered:
+        extras = []
+        if legend:
+            for opt in legend["options"]:
+                if opt.get("keys") == ["enter"]:
+                    continue
+                extras.append(opt)
+        numbered["options"] = numbered["options"] + extras
+        return numbered
     hooks = _parse_codex_hooks(blob)
     if hooks:
         return hooks
-    legend = _parse_key_legend(blob)
     if legend:
         return legend
     if "Enter to select" not in blob and "to navigate" not in blob:
