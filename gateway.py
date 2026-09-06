@@ -360,7 +360,9 @@ def read_session(pane_id: str, include_tty: bool = False) -> dict:
     overlay = bool(question) or (
         "trust" in preview.lower() and ("hook" in preview.lower() or "go back" in preview.lower())
     )
-    if include_tty or agent.get("status") == "blocked" or overlay:
+    empty_chat = not (conv.get("messages") or [])
+    working = agent.get("status") == "working"
+    if include_tty or agent.get("status") == "blocked" or overlay or (empty_chat and not working):
         text = read_tty(pane_id, agent.get("status") or "")
         question = adapters.parse_tui_question(text) or question
     return {

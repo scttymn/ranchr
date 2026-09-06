@@ -796,8 +796,13 @@ function renderChat(data) {
   }
   const groups = groupChat(messages);
   if (!groups.length && !notices.length && !state.thinking) {
-    const note = data?.note || "No chat transcript yet.";
-    el.innerHTML = `<p class="empty">${escapeHtml(note)}</p>`;
+    const raw = String(data?.text || "").replace(/\s+$/, "");
+    if (raw) {
+      el.innerHTML = `<div class="pane-fallback"><div class="pane-raw-label">Screen</div><pre class="pane-raw">${escapeHtml(raw)}</pre></div>`;
+    } else {
+      const note = data?.note || "No chat transcript yet.";
+      el.innerHTML = `<p class="empty">${escapeHtml(note)}</p>`;
+    }
     el._html = "";
     updateJumpLatest();
     return;
@@ -1126,7 +1131,10 @@ function renderQuestion(q) {
   if (!box) return;
   box.hidden = false;
   $("#q-title").textContent = q.title || "";
-  $("#q-prompt").textContent = q.prompt || "Choose one";
+  const rawOn = Boolean(String(state.session?.text || "").trim());
+  $("#q-prompt").textContent = rawOn
+    ? (q.title === "Hook review" ? "Trust this hook to continue." : q.prompt?.split("\n")[0] || "Choose one")
+    : (q.prompt || "Choose one");
   const list = $("#q-options");
   list.innerHTML = "";
   const cursor = Number(q.cursor) || 1;
