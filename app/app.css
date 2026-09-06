@@ -355,7 +355,7 @@ button, .chip, .pick, .card, .fab {
 }
 .pane-hud {
   flex-shrink: 0;
-  max-height: min(38vh, 280px);
+  max-height: 50%;
   overflow: auto;
   margin: 0 16px 8px;
   background: var(--bg-deep);
