@@ -20,6 +20,16 @@ def conversation(kind: str, cwd: str, pids: list[int]) -> dict:
         found = claude_conversation(cwd, pids)
         if found:
             return found
+    if kind in {"codex", "openai", "openai-codex"}:
+        found = codex_conversation(cwd, pids)
+        if found:
+            return found
+        return {
+            "adapter": "codex",
+            "title": None,
+            "messages": [],
+            "note": "Waiting for Codex to write this session. Send a message and it will show up here.",
+        }
     return {
         "adapter": None,
         "title": None,
@@ -63,6 +73,219 @@ def claude_conversation(cwd: str, pids: list[int]) -> dict | None:
     return {
         "adapter": "claude",
         "title": None,
+        "messages": messages,
+        "note": None,
+        "session_id": path.stem,
+    }
+
+
+def _codex_home() -> Path:
+    return Path.home() / ".codex"
+
+
+_CODEX_ROLLOUT = re.compile(
+    r"^rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-"
+    r"([0-9a-fA-F-]{36})\.jsonl(?:\.zst)?$"
+)
+_CODEX_INJECTED = re.compile(r"^<[a-z][A-Za-z0-9_.-]*(?:\s|/?>)")
+
+
+def _same_cwd(left: str, right: str) -> bool:
+    if not left or not right:
+        return False
+    try:
+        return Path(left).expanduser().resolve() == Path(right).expanduser().resolve()
+    except Exception:
+        return os.path.normpath(left) == os.path.normpath(right)
+
+
+def _codex_pid_floor(pids: list[int]) -> float | None:
+    pidset = {int(p) for p in pids if p}
+    starts = [t for t in (_pid_start_epoch(p) for p in pidset) if t]
+    if starts:
+        return min(starts) - 30
+    return None
+
+
+def _codex_from_sqlite(cwd: str) -> list[Path]:
+    db = _codex_home() / "state_5.sqlite"
+    if not db.is_file():
+        return []
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        rows = con.execute(
+            "SELECT rollout_path, source, cwd, COALESCE(updated_at_ms, recency_at_ms, updated_at * 1000) AS recency "
+            "FROM threads WHERE archived IS NOT 1 AND source IN ('cli', 'vscode')"
+        ).fetchall()
+        con.close()
+    except Exception:
+        return []
+    found: list[tuple[float, Path]] = []
+    for path, source, stored_cwd, recency in rows:
+        if source not in {"cli", "vscode"}:
+            continue
+        if not _same_cwd(stored_cwd or "", cwd):
+            continue
+        rollout = Path(path).expanduser() if path else None
+        if not rollout or not rollout.is_file():
+            continue
+        stamp = (recency or 0) / 1000 if recency else rollout.stat().st_mtime
+        found.append((stamp, rollout))
+    found.sort(key=lambda item: item[0], reverse=True)
+    return [path for _, path in found]
+
+
+def _codex_from_files(cwd: str) -> list[Path]:
+    root = _codex_home() / "sessions"
+    if not root.is_dir():
+        return []
+    found: list[tuple[float, Path]] = []
+    for path in root.rglob("rollout-*.jsonl"):
+        if not _CODEX_ROLLOUT.match(path.name):
+            continue
+        try:
+            first = path.read_text(encoding="utf-8", errors="replace").splitlines()[:1]
+            meta = json.loads(first[0]) if first else {}
+        except Exception:
+            continue
+        payload = meta.get("payload") if isinstance(meta, dict) else {}
+        if not isinstance(payload, dict):
+            continue
+        if payload.get("source") not in {"cli", "vscode"}:
+            continue
+        if not _same_cwd(payload.get("cwd") or "", cwd):
+            continue
+        found.append((path.stat().st_mtime, path))
+    found.sort(key=lambda item: item[0], reverse=True)
+    return [path for _, path in found]
+
+
+def _codex_jsonl(cwd: str, pids: list[int]) -> Path | None:
+    if not cwd:
+        return None
+    paths = _codex_from_sqlite(cwd) or _codex_from_files(cwd)
+    if not paths:
+        return None
+    newest = paths[0]
+    floor = _codex_pid_floor(pids)
+    if floor is not None:
+        if newest.stat().st_mtime < floor:
+            return None
+        return newest
+    if time.time() - newest.stat().st_mtime < 86400:
+        return newest
+    return None
+
+
+def _codex_blocks(content) -> list[dict]:
+    if isinstance(content, str):
+        return [{"type": "text", "text": content}]
+    if isinstance(content, list):
+        return [part for part in content if isinstance(part, dict)]
+    if isinstance(content, dict):
+        return [content]
+    return []
+
+
+def _codex_injected(text: str) -> bool:
+    s = (text or "").strip()
+    if not s:
+        return True
+    if s.startswith("<environment_context"):
+        return True
+    return bool(_CODEX_INJECTED.match(s))
+
+
+def _codex_text(content) -> str:
+    parts = []
+    for block in _codex_blocks(content):
+        kind = block.get("type")
+        if kind in {"reasoning", "thinking", "encrypted_content"}:
+            continue
+        if kind not in {"input_text", "output_text", "text", None}:
+            continue
+        text = (block.get("text") or "").strip()
+        if text and not _codex_injected(text):
+            parts.append(text)
+    return "\n".join(parts).strip()
+
+
+def _codex_cmd(raw) -> str:
+    if isinstance(raw, dict):
+        cmd = raw.get("cmd") or raw.get("command") or ""
+        if isinstance(cmd, list):
+            cmd = " ".join(str(part) for part in cmd)
+        return str(cmd or "").replace("\n", " ").strip()
+    if not isinstance(raw, str):
+        return ""
+    match = re.search(r'\bcmd\s*:\s*"((?:\\.|[^"\\])*)"', raw)
+    if match:
+        return match.group(1).replace("\\n", " ").replace('\\"', '"').strip()
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return ""
+    return _codex_cmd(parsed)
+
+
+def _codex_tool_label(payload: dict) -> str:
+    kind = payload.get("type") or ""
+    name = payload.get("name") or kind or "tool"
+    action = payload.get("action") if isinstance(payload.get("action"), dict) else {}
+    cmd = _codex_cmd(
+        payload.get("arguments")
+        or payload.get("input")
+        or action
+        or ""
+    )
+    if name in {"exec", "local_shell", "local_shell_call"} or kind == "local_shell_call":
+        return f"Bash · {cmd[:72]}" if cmd else "Bash"
+    if cmd:
+        label = f"{name} · {cmd[:72]}"
+        return label
+    return str(name)
+
+
+def _coalesce_codex(path: Path) -> list[dict]:
+    messages: list[dict] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if obj.get("type") != "response_item":
+            continue
+        payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
+        item = payload.get("type")
+        if item == "message":
+            role = payload.get("role")
+            if role not in {"user", "assistant"}:
+                continue
+            text = _codex_text(payload.get("content"))
+            if not text:
+                continue
+            messages.append({"role": "user" if role == "user" else "agent", "text": text})
+            continue
+        if item in {"function_call", "local_shell_call", "custom_tool_call"}:
+            messages.append({"role": "tool", "text": _codex_tool_label(payload)})
+    return messages
+
+
+def codex_conversation(cwd: str, pids: list[int]) -> dict | None:
+    path = _codex_jsonl(cwd, pids)
+    if not path:
+        return None
+    messages = _coalesce_codex(path)
+    if not messages:
+        return None
+    title = next((m["text"].splitlines()[0][:80] for m in messages if m["role"] == "user"), None)
+    return {
+        "adapter": "codex",
+        "title": title,
         "messages": messages,
         "note": None,
         "session_id": path.stem,
@@ -181,7 +404,7 @@ def _grok_home() -> Path:
 
 def _pid_start_epoch(pid: int) -> float | None:
     try:
-        hz = os.sysconf(os.SC_CLK_TCK)
+        hz = os.sysconf("SC_CLK_TCK")
         raw = Path(f"/proc/{pid}/stat").read_text()
         starttime = int(raw[raw.rfind(")") + 2 :].split()[19])
         btime = None

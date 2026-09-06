@@ -75,13 +75,14 @@ def _proc_start(pid: int) -> float:
 
 
 def ensure_gateway() -> None:
-    script = ROOT / "gateway.py"
+    scripts = [ROOT / "gateway.py", ROOT / "adapters.py"]
+    newest = max((p.stat().st_mtime for p in scripts if p.is_file()), default=0)
     st = host_state()
     pid = st.get("gateway_pid")
     if port_open() and pid:
         try:
             os.kill(int(pid), 0)
-            if script.stat().st_mtime <= _proc_start(int(pid)) + 1:
+            if newest <= _proc_start(int(pid)) + 1:
                 return
         except (ProcessLookupError, FileNotFoundError, TypeError, ValueError, OSError):
             pass

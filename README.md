@@ -2,7 +2,7 @@
 
 Phone/desktop client for coding agents that already run on your PC.
 
-[Herdr](https://herdr.dev) is the herder — the ranch hand that tends the cattle on a machine. Ranchr is the rancher: you, looking over one or more ranches when you’re not in the yard. A small HTTP gateway talks to a live Herdr session over its Unix socket. The PWA shows the herd, chat, tools, and spawn/stop/close. Chat uses harness adapters (Grok today) so you see the conversation, not the TUI chrome. Terminal still has the raw pane.
+[Herdr](https://herdr.dev) is the herder — the ranch hand that tends the cattle on a machine. Ranchr is the rancher: you, looking over one or more ranches when you’re not in the yard. A small HTTP gateway talks to a live Herdr session over its Unix socket. The PWA shows the herd, chat, tools, and spawn/stop/close. Chat uses harness adapters (Grok, Claude, Codex) so you see the conversation, not the TUI chrome.
 
 The phone app is a PWA on GitHub Pages. Your PC still runs the gateway and agents. A magic link ties the two together.
 
@@ -62,7 +62,7 @@ The PWA pulls live colors from the ranch (`/api/theme.css`). Change the Omarchy 
 | Path | What |
 |---|---|
 | `gateway.py` | localhost HTTP/SSE ↔ Herdr socket |
-| `adapters.py` | harness transcripts (Grok `updates.jsonl`, …) |
+| `adapters.py` | harness transcripts (Grok, Claude, Codex) |
 | `app/` | PWA |
 | `index.html` | early visual mock (Pixel frame) |
 
