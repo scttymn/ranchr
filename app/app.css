@@ -1017,4 +1017,13 @@ button, .chip, .pick, .card, .fab {
   .msg {
     max-width: 72%;
   }
+  .composer {
+    padding-bottom: 16px;
+  }
+  .herd-footer {
+    padding-bottom: 16px;
+  }
+  .sheet {
+    padding-bottom: 20px;
+  }
 }
