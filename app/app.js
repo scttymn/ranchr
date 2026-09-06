@@ -125,6 +125,8 @@ const state = {
   themeSlug: "",
   themeRev: "",
   themeApplied: false,
+  agentStatus: {},
+  soundsPrimed: false,
 };
 
 const THEME_STORE = "ranchr.theme";
@@ -286,8 +288,81 @@ function applyFilter() {
   }
 }
 
+let audioCtx = null;
+
+function unlockAudio() {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  if (!audioCtx) audioCtx = new Ctx();
+  if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+  try {
+    const buf = audioCtx.createBuffer(1, 1, 22050);
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(audioCtx.destination);
+    src.start(0);
+  } catch {
+    /* ignore */
+  }
+}
+
+function playChime(kind) {
+  unlockAudio();
+  if (!audioCtx) return;
+  const t0 = audioCtx.currentTime + 0.02;
+  const notes =
+    kind === "request"
+      ? [
+          { f: 523.25, d: 0.1, g: 0.2 },
+          { f: 392.0, d: 0.18, g: 0.18, wait: 0.12 },
+        ]
+      : [
+          { f: 587.33, d: 0.1, g: 0.18 },
+          { f: 880.0, d: 0.22, g: 0.2, wait: 0.1 },
+        ];
+  let t = t0;
+  for (const n of notes) {
+    t += n.wait || 0;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(n.f, t);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(n.g, t + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + n.d);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + n.d + 0.03);
+  }
+}
+
+function noteAgentSounds(herd) {
+  const prev = state.agentStatus;
+  const next = {};
+  const primed = state.soundsPrimed;
+  let request = false;
+  let done = false;
+  for (const a of herd.agents || []) {
+    const st = a.status || "unknown";
+    next[a.id] = st;
+    const was = prev[a.id];
+    if (!primed || was === st) continue;
+    if (st === "blocked") request = true;
+    else if ((st === "idle" || st === "done") && was && was !== "idle" && was !== "done") {
+      done = true;
+    }
+  }
+  state.agentStatus = next;
+  state.soundsPrimed = true;
+  if (!primed) return;
+  if (request) playChime("request");
+  else if (done) playChime("done");
+}
+
 function renderHerd() {
   const { herd } = state;
+  noteAgentSounds(herd);
   $("#host-name").textContent = herd.host || "this PC";
   const needsChip = document.querySelector('.chip[data-filter="blocked"]');
   if (needsChip) {
@@ -1176,6 +1251,9 @@ async function loadHerd() {
 }
 
 function wire() {
+  const armAudio = () => unlockAudio();
+  window.addEventListener("pointerdown", armAudio, { once: true, passive: true });
+  window.addEventListener("keydown", armAudio, { once: true, passive: true });
   $$(".filters .chip").forEach((btn) => {
     btn.addEventListener("click", () => {
       $$(".filters .chip").forEach((c) => c.classList.remove("on"));
