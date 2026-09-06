@@ -572,7 +572,10 @@ async function refreshSession() {
     applySessionHeader(data);
     const a = data.agent;
     const blocked = a.status === "blocked";
-    const question = data.question && data.question.kind === "choice" ? data.question : null;
+    const question =
+      data.question && (data.question.kind === "choice" || data.question.kind === "keys")
+        ? data.question
+        : null;
     const need = $("#session-need");
     const qel = $("#session-question");
     if (question) {
@@ -1131,14 +1134,15 @@ function renderQuestion(q) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "q-opt" + (opt.n === cursor ? " on" : "");
-    btn.innerHTML = `<span class="lab">${escapeHtml(String(opt.n) + ". " + (opt.label || ""))}</span>` +
+    const lab = opt.keys ? (opt.label || "") : `${opt.n}. ${opt.label || ""}`;
+    btn.innerHTML = `<span class="lab">${escapeHtml(lab)}</span>` +
       (opt.description ? `<span class="desc">${escapeHtml(opt.description)}</span>` : "");
     btn.addEventListener("click", () => {
       if (opt.input) {
         showQuestionInput(opt.n);
         return;
       }
-      answerQuestion(opt.n);
+      answerQuestion(opt);
     });
     list.appendChild(btn);
   }
@@ -1171,12 +1175,19 @@ function showQuestionInput(index) {
   input.focus();
 }
 
-async function answerQuestion(index, text) {
+async function answerQuestion(opt, text) {
   if (!state.sessionId) return;
+  const body = { text: text || "" };
+  if (opt && typeof opt === "object" && !Array.isArray(opt)) {
+    if (opt.keys) body.keys = opt.keys;
+    else body.index = opt.n;
+  } else {
+    body.index = opt;
+  }
   try {
     await api(`/api/agents/${encodeURIComponent(state.sessionId)}/answer`, {
       method: "POST",
-      body: JSON.stringify({ index, text: text || "" }),
+      body: JSON.stringify(body),
     });
     const qel = $("#session-question");
     if (qel) qel.hidden = true;

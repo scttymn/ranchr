@@ -554,11 +554,37 @@ def _strip_system_blocks(text: str) -> str:
     return cleaned.strip()
 
 
+def _parse_codex_hooks(blob: str) -> dict | None:
+    low = blob.lower()
+    if "trust all" not in low or "hook" not in low:
+        return None
+    match = re.search(r"(\d+)\s+hooks? needs? review", blob, re.I)
+    if match and match.group(1) == "1":
+        prompt = "1 hook needs review before it can run."
+    elif match:
+        prompt = f"{match.group(1)} hooks need review before they can run."
+    else:
+        prompt = "A hook needs review before it can run."
+    return {
+        "kind": "keys",
+        "title": "Hooks",
+        "prompt": prompt,
+        "options": [
+            {"label": "Trust all", "keys": ["t"]},
+            {"label": "Review hooks", "keys": ["enter"]},
+            {"label": "Close", "keys": ["esc"]},
+        ],
+    }
+
+
 def parse_tui_question(text: str) -> dict | None:
-    """Pull a numbered TUI poll (Claude AskUserQuestion, etc.) out of pane text."""
+    """Pull a TUI poll (Codex hooks, Claude AskUserQuestion, etc.) out of pane text."""
     if not text:
         return None
     blob = text.replace("\r", "")
+    hooks = _parse_codex_hooks(blob)
+    if hooks:
+        return hooks
     if "Enter to select" not in blob and "to navigate" not in blob:
         return None
     lines = [ln.rstrip() for ln in blob.splitlines()]

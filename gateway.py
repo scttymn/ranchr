@@ -351,12 +351,15 @@ def read_session(pane_id: str, include_tty: bool = False) -> dict:
     if conv.get("title"):
         agent = {**agent, "title": conv["title"]}
     # agent.read of the live pane redraws alt-screen TUIs (scroll jump).
-    # Chat comes from the adapter; only the Terminal tab needs a tty snapshot.
+    # Chat comes from the adapter. Idle overlays (Codex hooks) show up in a
+    # short visible preview; blocked polls still read the pane.
     text = ""
-    question = None
+    preview = agent.get("preview") or preview_for(pane_id, agent.get("status") or "")
+    agent = {**agent, "preview": preview}
+    question = adapters.parse_tui_question(preview)
     if include_tty or agent.get("status") == "blocked":
         text = read_tty(pane_id, agent.get("status") or "")
-        question = adapters.parse_tui_question(text)
+        question = adapters.parse_tui_question(text) or question
     return {
         "agent": agent,
         "text": text,
@@ -934,6 +937,24 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if path.startswith("/api/agents/") and path.endswith("/answer"):
                 pane_id = unquote(path[len("/api/agents/") : -len("/answer")])
+                keys = body.get("keys")
+                if isinstance(keys, str):
+                    keys = [keys]
+                if isinstance(keys, list) and keys:
+                    safe = []
+                    for key in keys:
+                        name = str(key).strip().lower()
+                        if not re.fullmatch(r"(enter|esc|escape|tab|space|backspace|[a-z0-9])", name):
+                            self._err(400, f"bad key {key}")
+                            return
+                        safe.append("esc" if name == "escape" else name)
+                    herdr_ok(
+                        "agent.send_keys",
+                        {"target": pane_id, "keys": safe},
+                        timeout=4.0,
+                    )
+                    self._json(200, {"ok": True, "keys": safe})
+                    return
                 index = int(body.get("index") or 0)
                 typed = (body.get("text") or "").strip()
                 if index < 1:
