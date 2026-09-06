@@ -9,11 +9,11 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Ranchr" />
   <title>Ranchr</title>
-  <script src="./connect.js?v=slash-2"></script>
+  <script src="./connect.js?v=hud-3"></script>
   <link rel="icon" href="./icon.svg" />
   <link rel="apple-touch-icon" href="./icon-180.png" />
-  <link rel="stylesheet" href="./app.css?v=slash-2" />
-  <link rel="stylesheet" href="./theme.css?v=slash-2" />
+  <link rel="stylesheet" href="./app.css?v=hud-3" />
+  <link rel="stylesheet" href="./theme.css?v=hud-3" />
 </head>
 <body>
   <div class="app">
@@ -52,6 +52,9 @@
         </div>
         <button type="button" class="screen-btn" id="screen-toggle" aria-pressed="false" title="Show the live pane">Screen</button>
         <span class="pip idle" id="session-pip"></span>
+      </div>
+      <div class="pane-hud" id="session-hud" hidden>
+        <pre class="pane-raw" id="session-hud-text"></pre>
       </div>
       <div class="thread-wrap" id="thread-wrap">
         <div class="thread" id="session-thread"></div>
@@ -107,8 +110,8 @@
     </div>
     <div class="toast" id="toast"></div>
   </div>
-  <script src="./vendor/marked.umd.js?v=slash-2"></script>
-  <script src="./vendor/purify.min.js?v=slash-2"></script>
-  <script src="./app.js?v=slash-2"></script>
+  <script src="./vendor/marked.umd.js?v=hud-3"></script>
+  <script src="./vendor/purify.min.js?v=hud-3"></script>
+  <script src="./app.js?v=hud-3"></script>
 </body>
 </html>

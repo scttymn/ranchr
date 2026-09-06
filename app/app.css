@@ -353,27 +353,29 @@ button, .chip, .pick, .card, .fab {
 .thread::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--accent) 50%, transparent);
 }
-.pane-fallback { margin: 4px 0 12px; }
-.pane-raw-label {
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin: 0 0 8px;
-}
-.pane-raw {
-  margin: 0;
-  padding: 12px 14px;
+.pane-hud {
+  flex-shrink: 0;
+  max-height: min(38vh, 280px);
+  overflow: auto;
+  margin: 0 16px 8px;
   background: var(--bg-deep);
   border: 1px solid var(--hairline);
   border-radius: 16px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+.pane-hud[hidden] { display: none; }
+.pane-hud .pane-raw {
+  margin: 0;
+  padding: 12px 14px;
+  background: transparent;
+  border: 0;
   color: var(--fg);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
   line-height: 1.35;
   white-space: pre-wrap;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: visible;
 }
 .msg {
   width: fit-content;

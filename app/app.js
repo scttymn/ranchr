@@ -817,10 +817,14 @@ function pinThread() {
   });
 }
 
-function paneHud(data) {
+function renderHud(data) {
+  const box = $("#session-hud");
+  const pre = $("#session-hud-text");
+  if (!box || !pre) return;
   const raw = String(data?.text || "").replace(/\s+$/, "");
-  if (!raw) return "";
-  return `<div class="pane-fallback"><pre class="pane-raw">${escapeHtml(raw)}</pre></div>`;
+  const on = Boolean(state.screenOn && raw);
+  box.hidden = !on;
+  if (on) pre.textContent = raw;
 }
 
 function syncScreenBtn() {
@@ -843,9 +847,10 @@ function renderChat(data) {
     }
   }
   const groups = groupChat(messages);
-  const hud = state.screenOn ? paneHud(data) : "";
+  renderHud(data);
   if (!groups.length && !notices.length && !state.thinking) {
-    el.innerHTML = hud || `<p class="empty">${escapeHtml(data?.note || "No chat transcript yet.")}</p>`;
+    const hudOn = state.screenOn && String(data?.text || "").trim();
+    el.innerHTML = hudOn ? "" : `<p class="empty">${escapeHtml(data?.note || "No chat transcript yet.")}</p>`;
     el._html = "";
     updateJumpLatest();
     return;
@@ -854,7 +859,6 @@ function renderChat(data) {
   let html = notices
     .map((n) => `<div class="msg system">${escapeHtml(n)}</div>`)
     .join("");
-  html += hud;
   html += groups
     .map((g, i) => {
       if (g.role === "user") {
