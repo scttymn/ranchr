@@ -289,16 +289,17 @@ function applyFilter() {
 function renderHerd() {
   const { herd } = state;
   $("#host-name").textContent = herd.host || "this PC";
-  const badge = $("#inbox-badge");
-  badge.hidden = !herd.blocked;
-  badge.textContent = String(herd.blocked || 0);
+  const needsChip = document.querySelector('.chip[data-filter="blocked"]');
+  if (needsChip) {
+    const n = herd.blocked || 0;
+    needsChip.textContent = n ? `Needs you · ${n}` : "Needs you";
+  }
   const list = $("#herd-list");
   const empty = $("#herd-empty");
   if (!herd.agents?.length) {
     list.innerHTML = "";
     empty.hidden = false;
     applyFilter();
-    renderInbox();
     return;
   }
   empty.hidden = true;
@@ -339,49 +340,6 @@ function renderHerd() {
     });
   });
   applyFilter();
-  renderInbox();
-}
-
-function renderInbox() {
-  const blocked = (state.herd.agents || []).filter((a) => a.status === "blocked");
-  $("#inbox-meta").textContent =
-    blocked.length === 1 ? "one blocked pane" : `${blocked.length} blocked panes`;
-  const list = $("#inbox-list");
-  if (!blocked.length) {
-    list.innerHTML = `<p class="empty">Nothing needs you.</p>`;
-    return;
-  }
-  list.innerHTML = blocked
-    .map(
-      (a) => `<article class="card needs" data-id="${a.id}">
-        <div class="card-top">
-          <span class="pip blocked"></span>
-          <div class="who">
-            <div class="title">${escapeHtml(a.title || a.agent)} wants input</div>
-            <div class="sub">${escapeHtml(a.cwd_pretty || "")}</div>
-          </div>
-        </div>
-        <div class="preview">${escapeHtml(a.preview || "")}</div>
-        <div class="row-btns" style="margin-top:12px">
-          <button class="btn quiet" data-act="deny">Deny</button>
-          <button class="btn quiet" data-act="once">Once</button>
-          <button class="btn primary" data-act="always">Allow</button>
-        </div>
-      </article>`
-    )
-    .join("");
-  list.querySelectorAll(".card").forEach((card) => {
-    card.addEventListener("click", (ev) => {
-      if (ev.target.closest("button")) return;
-      openSession(card.dataset.id);
-    });
-    card.querySelectorAll("button[data-act]").forEach((btn) => {
-      btn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        approve(card.dataset.id, btn.dataset.act);
-      });
-    });
-  });
 }
 
 function setThinking(on) {
@@ -1226,8 +1184,6 @@ function wire() {
       applyFilter();
     });
   });
-  $("#inbox-btn").addEventListener("click", () => go("inbox"));
-  $("#back-herd").addEventListener("click", () => go("herd"));
   $("#back-session").addEventListener("click", () => {
     stopPoll();
     stopTty();
@@ -1339,7 +1295,6 @@ wire();
 loadHerd().then(() => {
   const hash = location.hash.replace("#", "");
   if (hash.startsWith("session=")) openSession(decodeURIComponent(hash.slice(8)));
-  if (hash === "inbox") go("inbox");
   if (hash === "spawn") openSheet();
 });
 live();

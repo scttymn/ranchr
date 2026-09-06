@@ -95,35 +95,6 @@ button, .chip, .pick, .card, .fab {
 }
 .host .meta { font-size: 12px; color: var(--muted); }
 
-.icon-btn {
-  width: var(--tap);
-  height: var(--tap);
-  border-radius: 14px;
-  border: 1px solid var(--hairline);
-  background: var(--glass);
-  color: var(--fg);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  position: relative;
-}
-.badge {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 99px;
-  background: var(--accent);
-  color: var(--fg-bright);
-  font-size: 10px;
-  font-weight: 700;
-  display: grid;
-  place-items: center;
-}
-.badge[hidden] { display: none; }
-
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -998,7 +969,6 @@ html[data-device="desktop"] .sheet {
     border-right: 1px solid var(--hairline);
   }
   #session,
-  #inbox,
   #placeholder {
     grid-column: 2;
     grid-row: 1;
@@ -1006,8 +976,7 @@ html[data-device="desktop"] .sheet {
   #placeholder.active {
     display: flex !important;
   }
-  #session .back-row .ghost,
-  #inbox .back-row .ghost {
+  #session .back-row .ghost {
     display: none;
   }
   .sheet {
