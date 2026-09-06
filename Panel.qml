@@ -40,6 +40,12 @@ Panel {
     }
   }
 
+  function openMagic() {
+    if (!service.magic)
+      return
+    Quickshell.execDetached(["xdg-open", service.magic])
+  }
+
   function launchSetup() {
     if (!bar || !service.tryStartSetup())
       return
@@ -192,22 +198,22 @@ Panel {
             cache: false
           }
 
-          MouseArea {
+          Text {
+            id: magicLink
             visible: !service.needsSetup && service.on && service.magic !== ""
             width: parent.width
-            height: magicLink.implicitHeight
-            cursorShape: Qt.PointingHandCursor
-            hoverEnabled: true
-            onClicked: Qt.openUrlExternally(service.magic)
-            Text {
-              id: magicLink
-              width: parent.width
-              wrapMode: Text.WrapAnywhere
-              text: service.magic
-              color: parent.containsMouse ? root.foreground : Color.accent
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              font.underline: true
+            wrapMode: Text.WrapAnywhere
+            text: service.magic
+            color: magicHit.containsMouse ? root.foreground : Color.accent
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            font.underline: true
+            MouseArea {
+              id: magicHit
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              hoverEnabled: true
+              onClicked: root.openMagic()
             }
           }
         }
