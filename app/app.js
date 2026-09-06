@@ -123,6 +123,7 @@ const state = {
   chatStick: true,
   chatScrolling: false,
   screenOn: false,
+  screenPinned: false,
   themeSlug: "",
   themeRev: "",
   themeApplied: false,
@@ -431,6 +432,22 @@ function looksLikeSlash(text) {
   return /^\/[A-Za-z]/.test(String(text || "").trim());
 }
 
+function lastUserText(messages) {
+  const list = visibleMessages(messages);
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i].role === "user") return list[i].text || "";
+  }
+  return state.pendingUser || "";
+}
+
+function looksLikeUnparsedTui(text, lastUser) {
+  const t = String(text || "");
+  if (!t.trim()) return false;
+  if (/^\s*press /im.test(t)) return true;
+  if (/\bModel:\s/.test(t) && /\bDirectory:\s/.test(t)) return true;
+  return looksLikeSlash(lastUser) && t.trim().length > 40;
+}
+
 function updateComposerMode() {
   const working = isWorking();
   $("#send").hidden = working;
@@ -518,6 +535,7 @@ async function openSession(id) {
   state.chatStick = true;
   state.sessionMode = "chat";
   const cached = readSessionCache(id);
+  state.screenPinned = false;
   state.screenOn = !((cached?.messages || []).length);
   syncScreenBtn();
   if (cached) {
@@ -565,7 +583,13 @@ function transcriptHasReply(messages, userText) {
 async function refreshSession() {
   if (!state.sessionId) return;
   try {
-    const tty = state.sessionMode === "term" || state.screenOn ? "?tty=1" : "";
+    const lastUser = lastUserText(state.session?.messages);
+    const wantTty =
+      state.sessionMode === "term" ||
+      state.screenOn ||
+      looksLikeSlash(state.pendingUser) ||
+      looksLikeSlash(lastUser);
+    const tty = wantTty ? "?tty=1" : "";
     const data = await api(`/api/agents/${encodeURIComponent(state.sessionId)}/session${tty}`);
     const wasWorking = (state.session && state.session.agent && state.session.agent.status) === "working";
     if (state.session && Array.isArray(state.session.messages)) {
@@ -585,6 +609,10 @@ async function refreshSession() {
         : null;
     const need = $("#session-need");
     const qel = $("#session-question");
+    if (!state.screenPinned && data.text && !question && looksLikeUnparsedTui(data.text, lastUserText(data.messages))) {
+      state.screenOn = true;
+      syncScreenBtn();
+    }
     if (question) {
       need.hidden = true;
       renderQuestion(question);
@@ -1330,6 +1358,7 @@ function wire() {
   });
   $("#screen-toggle")?.addEventListener("click", () => {
     state.screenOn = !state.screenOn;
+    state.screenPinned = true;
     syncScreenBtn();
     refreshSession();
   });
