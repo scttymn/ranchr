@@ -424,7 +424,11 @@ function setThinking(on) {
 }
 
 function isWorking() {
-  return state.thinking || state.session?.agent?.status === "working";
+  return state.session?.agent?.status === "working";
+}
+
+function looksLikeSlash(text) {
+  return /^\/[A-Za-z]/.test(String(text || "").trim());
 }
 
 function updateComposerMode() {
@@ -594,7 +598,7 @@ async function refreshSession() {
     if (state.pendingUser && transcriptHasReply(visibleMessages(data.messages), state.pendingUser)) {
       state.pendingUser = null;
       setThinking(false);
-    } else if (state.thinking && blocked) {
+    } else if (state.thinking && a.status !== "working" && (blocked || question || looksLikeSlash(state.pendingUser))) {
       setThinking(false);
     }
     renderChat(data);
@@ -1024,9 +1028,27 @@ async function sendPrompt() {
   const box = $("#composer");
   const text = box.value.trim();
   if (!text || !state.sessionId) return;
-  if (state.thinking && !isWorking()) return;
   box.value = "";
   growComposer(box);
+
+  if (looksLikeSlash(text) && !herdCommand(text)) {
+    state.pendingUser = text;
+    state.screenOn = true;
+    syncScreenBtn();
+    setThinking(false);
+    state.chatStick = true;
+    renderChat(state.session || { messages: [], agent: { agent: "agent" } });
+    try {
+      await api(`/api/agents/${encodeURIComponent(state.sessionId)}/prompt`, {
+        method: "POST",
+        body: JSON.stringify({ text }),
+      });
+      await refreshSession();
+    } catch (err) {
+      toast(err.message);
+    }
+    return;
+  }
 
   const cmd = herdCommand(text);
   if (cmd) {
@@ -1053,6 +1075,12 @@ async function sendPrompt() {
     } catch (err) {
       toast(err.message);
     }
+    return;
+  }
+
+  if (state.thinking && !isWorking()) {
+    box.value = text;
+    growComposer(box);
     return;
   }
 
