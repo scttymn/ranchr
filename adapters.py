@@ -608,6 +608,77 @@ def _parse_codex_hooks(blob: str) -> dict | None:
     return None
 
 
+_LEGEND_KEYS = {
+    "enter": "enter",
+    "return": "enter",
+    "esc": "esc",
+    "escape": "esc",
+    "space": "space",
+    "tab": "tab",
+    "backspace": "backspace",
+}
+
+
+def _legend_key(token: str) -> str | None:
+    name = (token or "").strip().lower()
+    if name in _LEGEND_KEYS:
+        return _LEGEND_KEYS[name]
+    if len(name) == 1 and name.isalnum():
+        return name
+    return None
+
+
+def _title_case_action(text: str) -> str:
+    label = re.sub(r"\s+", " ", (text or "").strip()).rstrip(".")
+    if not label:
+        return ""
+    return label[0].upper() + label[1:]
+
+
+def _parse_key_legend(blob: str) -> dict | None:
+    """Turn a TUI footer like 'Press t to trust; esc to close' into buttons."""
+    lines = [ln.strip() for ln in blob.splitlines() if ln.strip()]
+    legend = ""
+    for ln in reversed(lines):
+        low = ln.lower()
+        if " to " in low and (
+            low.startswith("press ")
+            or "esc to " in low
+            or "enter to " in low
+            or re.search(r"\b[a-z] to ", low)
+        ):
+            legend = ln
+            break
+    if not legend:
+        return None
+    body = re.sub(r"(?i)^press\s+", "", legend).strip()
+    options = []
+    seen = set()
+    for part in [p.strip() for p in re.split(r"[;|]", body) if p.strip()]:
+        matched = re.match(
+            r"(?i)^(space|enter|return|esc|escape|tab|backspace|[a-z0-9])"
+            r"(?:\s+or\s+(space|enter|esc|escape|[a-z0-9]))?"
+            r"\s+to\s+(.+)$",
+            part,
+        )
+        if not matched:
+            continue
+        key = _legend_key(matched.group(1))
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        label = _title_case_action(matched.group(3))
+        options.append({"label": label or key, "keys": [key]})
+    if not options:
+        return None
+    return {
+        "kind": "keys",
+        "title": "",
+        "prompt": legend,
+        "options": options,
+    }
+
+
 def parse_tui_question(text: str) -> dict | None:
     """Pull a TUI poll (Codex hooks, Claude AskUserQuestion, etc.) out of pane text."""
     if not text:
@@ -616,6 +687,9 @@ def parse_tui_question(text: str) -> dict | None:
     hooks = _parse_codex_hooks(blob)
     if hooks:
         return hooks
+    legend = _parse_key_legend(blob)
+    if legend:
+        return legend
     if "Enter to select" not in blob and "to navigate" not in blob:
         return None
     lines = [ln.rstrip() for ln in blob.splitlines()]
